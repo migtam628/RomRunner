@@ -11,6 +11,7 @@
 # Desktop builds also download a missing core automatically on first launch
 # of a game; the desktop targets here are for offline machines.
 # Override the core list with: CORES="fceumm snes9x" tool/fetch_cores.sh android
+# Override the destination (desktop and iOS targets) with: DEST=some/dir
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,12 +59,12 @@ case "$target" in
     for c in $CORES; do
       name="${c}_libretro_ios.dylib"
       [ "$c" = "mgba" ] && name="mgba_libretro.dylib"   # buildbot names this one differently
-      fetch "$BB/apple/ios-arm64/latest/$name.zip" "$name" "$APP/ios/cores/$name"
+      fetch "$BB/apple/ios-arm64/latest/$name.zip" "$name" "${DEST:-$APP/ios/cores}/$name"
     done
     ;;
   macos)
     arch=$(uname -m); [ "$arch" = "arm64" ] || arch=x86_64
-    dest="$HOME/Library/Application Support/com.mttech.migplay/cores"
+    dest="${DEST:-$HOME/Library/Application Support/com.mttech.migplay/cores}"
     echo "macOS $arch -> $dest"
     for c in $CORES; do
       fetch "$BB/apple/osx/$arch/latest/${c}_libretro.dylib.zip" "${c}_libretro.dylib" "$dest/${c}_libretro.dylib"
@@ -72,14 +73,14 @@ case "$target" in
     ;;
   linux)
     arch=$(uname -m); [ "$arch" = "aarch64" ] || arch=x86_64
-    dest="${XDG_DATA_HOME:-$HOME/.local/share}/com.mttech.migplay/cores"
+    dest="${DEST:-${XDG_DATA_HOME:-$HOME/.local/share}/com.mttech.migplay/cores}"
     echo "Linux $arch -> $dest"
     for c in $CORES; do
       fetch "$BB/linux/$arch/latest/${c}_libretro.so.zip" "${c}_libretro.so" "$dest/${c}_libretro.so"
     done
     ;;
   windows)
-    dest="${APPDATA:?run this from Git Bash on Windows}/com.mttech/migplay/cores"
+    dest="${DEST:-${APPDATA:?run this from Git Bash on Windows}/com.mttech/migplay/cores}"
     echo "Windows x86_64 -> $dest"
     for c in $CORES; do
       fetch "$BB/windows/x86_64/latest/${c}_libretro.dll.zip" "${c}_libretro.dll" "$dest/${c}_libretro.dll"

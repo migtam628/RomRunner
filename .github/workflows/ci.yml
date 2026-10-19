@@ -1,0 +1,55 @@
+# Checks every push and pull request: Dart analysis + tests, and the native
+# bridge compiled with warnings as errors, then run headless against a real
+# libretro core and a Game Boy CPU test ROM.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: "3.47.7"
+
+jobs:
+  flutter:
+    name: Analyze + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: App
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: Plugin
+        working-directory: packages/migplay_core
+        run: |
+          flutter pub get
+          flutter analyze
+
+  bridge:
+    name: Native bridge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile (with audio, warnings as errors)
+        run: |
+          cc -O2 -Wall -Wextra -Wno-unused-parameter -Werror \
+             -Wno-error=format-truncation \
+             -c packages/migplay_core/src/migplay_core.c -o /tmp/bridge.o
+      - name: Headless run against Gambatte + cpu_instrs
+        run: |
+          DEST=/tmp/cores CORES=gambatte tool/fetch_cores.sh linux
+          git clone --depth 1 -q https://github.com/retrio/gb-test-roms.git /tmp/gbroms
+          cd /tmp
+          "$GITHUB_WORKSPACE/tool/test_bridge.sh" /tmp/cores/gambatte_libretro.so \
+            /tmp/gbroms/cpu_instrs/cpu_instrs.gb 3600 | tee out.txt
+          grep -q "frames produced" out.txt

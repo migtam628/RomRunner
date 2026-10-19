@@ -8,6 +8,7 @@ Pod::Spec.new do |s|
   s.author           = { 'MT Tech Services' => 'migtam055@gmail.com' }
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
+  s.requires_arc     = false
   s.dependency 'FlutterMacOS'
   s.platform         = :osx, '10.15'
   s.frameworks       = 'CoreAudio', 'AudioToolbox', 'CoreFoundation'

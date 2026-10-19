@@ -10,6 +10,7 @@ Pod::Spec.new do |s|
   # Classes/migplay_core.m includes ../../src/migplay_core.c so both
   # platforms share one source. It is .m so miniaudio can use AVFoundation.
   s.source_files     = 'Classes/**/*'
+  s.requires_arc     = false
   s.dependency 'Flutter'
   s.platform         = :ios, '15.0'
   s.frameworks       = 'AVFoundation', 'AudioToolbox', 'CoreAudio'

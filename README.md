@@ -77,6 +77,31 @@ cd build/web && python3 -m http.server 8080
 ```
 Games run through EmulatorJS loaded from its CDN, so the page needs internet. ROMs stay in the browser tab; nothing is uploaded. PS1 on web needs single-file `.chd` or `.pbp`.
 
+## Releases (GitHub Actions)
+
+`.github/workflows/release.yml` builds all seven targets and publishes a GitHub Release when you push a version tag:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+A tag with a dash (`v0.2.0-beta.1`) becomes a pre-release. To test the pipeline without publishing, open **Actions → Release → Run workflow**; the builds appear as downloadable artifacts on that run.
+
+| Asset | Contents |
+|---|---|
+| `RomRunner-<ver>-android.apk` | Phones, tablets and Fire TV (arm64 + 32-bit ARM), cores included |
+| `RomRunner-<ver>-windows-x64.zip` | Unzip and run `migplay.exe`, cores included |
+| `RomRunner-<ver>-linux-x64.tar.gz` | Extract and run `./migplay`, cores included |
+| `RomRunner-<ver>-macos.zip` | Universal app, not notarized (right-click → Open the first time); cores download on first use |
+| `RomRunner-<ver>-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore |
+| `RomRunner-<ver>-web.zip` | Static site; serve it over HTTP(S) |
+| `SHA256SUMS.txt` | Checksums |
+
+**Android signing (do this once before the first real release).** Without it, each release APK is signed with a different throwaway key, and Android refuses to install it over the previous version. On a machine with a JDK and `gh` logged in, run `tool/android_signing.sh`. It creates `~/romrunner-release.jks` and stores it in the repo's Actions secrets. Keep that file backed up and out of the repo.
+
+`.github/workflows/ci.yml` runs on every push and pull request: `flutter analyze` and `flutter test`, a warnings-as-errors compile of the C bridge, and a headless run of the bridge against the Gambatte core with the `cpu_instrs` test ROM.
+
 ## Controls
 
 | | Keyboard | Gamepad (Android/Fire TV) | Fire TV remote |

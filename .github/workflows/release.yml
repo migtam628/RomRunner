@@ -1,0 +1,289 @@
+# Builds every platform and publishes a GitHub Release.
+#
+#   Release:  git tag v0.1.0 && git push origin v0.1.0
+#             (a tag with a dash, like v0.2.0-beta.1, is marked pre-release)
+#   Dry run:  Actions tab -> Release -> Run workflow (builds and uploads the
+#             files as workflow artifacts, no release is created)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.47.7"
+  APP: RomRunner
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.v.outputs.name }}       # used in file names, e.g. 0.2.0-beta.1
+      build: ${{ steps.v.outputs.build }}     # x.y.z only, for platform version fields
+      number: ${{ steps.v.outputs.number }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+          fi
+          {
+            echo "name=$name"
+            echo "build=${name%%-*}"
+            echo "number=${GITHUB_RUN_NUMBER}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $name (build $GITHUB_RUN_NUMBER)"
+
+  android:
+    name: Android + Fire TV
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Fetch libretro cores
+        run: tool/fetch_cores.sh android
+      - name: Set up release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK is signed with a throwaway debug key and won't upgrade over earlier installs."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > app/android/app/upload-keystore.jks
+          {
+            echo "storeFile=upload-keystore.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          } > app/android/key.properties
+      - name: Build APK
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --build-name=${{ needs.version.outputs.build }} \
+            --build-number=${{ needs.version.outputs.number }}
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "../dist/${APP}-${{ needs.version.outputs.name }}-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q clang cmake ninja-build pkg-config libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build linux --release \
+            --build-name=${{ needs.version.outputs.build }} \
+            --build-number=${{ needs.version.outputs.number }}
+      - name: Bundle cores and package
+        run: |
+          bundle=app/build/linux/x64/release/bundle
+          DEST="$PWD/$bundle/cores" tool/fetch_cores.sh linux
+          mkdir -p dist
+          tar -C "$(dirname "$bundle")" -czf "dist/${APP}-${{ needs.version.outputs.name }}-linux-x64.tar.gz" \
+            --transform "s|^bundle|${APP}|" bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build windows --release --build-name=${{ needs.version.outputs.build }} --build-number=${{ needs.version.outputs.number }}
+      - name: Bundle cores and package
+        shell: bash
+        run: |
+          out=app/build/windows/x64/runner/Release
+          DEST="$PWD/$out/cores" tool/fetch_cores.sh windows
+          mkdir -p dist
+          name="${APP}-${{ needs.version.outputs.name }}-windows-x64"
+          cp -r "$out" "dist/$name"
+          (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null && rm -rf "$name")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build macos --release \
+            --build-name=${{ needs.version.outputs.build }} \
+            --build-number=${{ needs.version.outputs.number }}
+      - name: Package
+        # Cores are not bundled: the app downloads them on first use, which
+        # avoids Gatekeeper quarantining unsigned dylibs inside the bundle.
+        run: |
+          app=app/build/macos/Build/Products/Release/migplay.app
+          mkdir -p dist
+          ditto -c -k --keepParent "$app" "dist/${APP}-${{ needs.version.outputs.name }}-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+          if-no-files-found: error
+
+  ios:
+    name: iOS (unsigned)
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Fetch libretro cores
+        run: tool/fetch_cores.sh ios
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign \
+            --build-name=${{ needs.version.outputs.build }} \
+            --build-number=${{ needs.version.outputs.number }}
+      - name: Package unsigned IPA
+        # Sideloadly / AltStore re-sign the app and its embedded cores.
+        run: |
+          mkdir -p dist/Payload
+          cp -R app/build/ios/iphoneos/Runner.app dist/Payload/
+          ls dist/Payload/Runner.app/Frameworks
+          (cd dist && zip -qr "${APP}-${{ needs.version.outputs.name }}-ios-unsigned.ipa" Payload && rm -rf Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: dist/*
+          if-no-files-found: error
+
+  web:
+    name: Web
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build web --release \
+            --build-name=${{ needs.version.outputs.build }} \
+            --build-number=${{ needs.version.outputs.number }}
+      - name: Package
+        run: |
+          mkdir -p dist
+          (cd app/build/web && zip -qr "../../../dist/${APP}-${{ needs.version.outputs.name }}-web.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, android, linux, windows, macos, ios, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.APP }} ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            | Platform | File | Install |
+            |---|---|---|
+            | Android phones, tablets, Fire TV | `-android.apk` | Sideload: `adb install -r <file>` (Fire TV: `adb connect <tv-ip>` first) |
+            | Windows | `-windows-x64.zip` | Unzip, run `migplay.exe`. Cores included. |
+            | macOS | `-macos.zip` | Unzip, then right-click the app → Open the first time (not notarized). Cores download on first game. |
+            | Linux | `-linux-x64.tar.gz` | Extract, run `./migplay`. Needs GTK 3. Cores included. |
+            | iOS | `-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore. |
+            | Web | `-web.zip` | Serve the folder over HTTP(S); games need internet for EmulatorJS. |
+
+            Bring your own ROMs, disc images and BIOS files.

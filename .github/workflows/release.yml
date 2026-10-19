@@ -102,7 +102,8 @@ jobs:
   linux:
     name: Linux
     needs: version
-    runs-on: ubuntu-latest
+    # Pinned: binaries built on a newer Ubuntu need a newer glibc to run.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Install build dependencies

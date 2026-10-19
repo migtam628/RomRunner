@@ -86,7 +86,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-A tag with a dash (`v0.2.0-beta.1`) becomes a pre-release. To test the pipeline without publishing, open **Actions → Release → Run workflow**; the builds appear as downloadable artifacts on that run.
+A tag with a dash (`v0.2.0-beta.1`) becomes a pre-release. To test the pipeline without publishing, open **Actions → Release → Run workflow** (or push a branch named `release-test/anything`); the builds appear as downloadable artifacts on that run.
 
 | Asset | Contents |
 |---|---|

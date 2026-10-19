@@ -2,13 +2,15 @@
 #
 #   Release:  git tag v0.1.0 && git push origin v0.1.0
 #             (a tag with a dash, like v0.2.0-beta.1, is marked pre-release)
-#   Dry run:  Actions tab -> Release -> Run workflow (builds and uploads the
-#             files as workflow artifacts, no release is created)
+#   Dry run:  Actions tab -> Release -> Run workflow, or push any branch named
+#             release-test/<something>. Builds and uploads the files as
+#             workflow artifacts; no release is created.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+    branches: ["release-test/**"]
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,17 @@
+# Prebuilt libretro cores are downloaded by tool/fetch_cores.sh
+app/android/app/src/main/jniLibs/
+app/ios/cores/*.dylib
+
+# ROMs, BIOS and saves never belong in the repo
+*.nes
+*.gb
+*.gbc
+*.gba
+*.sfc
+*.smc
+*.chd
+*.cue
+*.bin
+*.state
+*.srm
+*.ppm

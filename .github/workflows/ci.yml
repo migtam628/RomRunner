@@ -17,7 +17,7 @@ jobs:
     name: Analyze + test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -39,7 +39,7 @@ jobs:
     name: Native bridge
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compile (with audio, warnings as errors)
         run: |
           cc -O2 -Wall -Wextra -Wno-unused-parameter -Werror \

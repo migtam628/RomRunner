@@ -1,4 +1,4 @@
-/// Dart side of the MigPlay libretro bridge (see src/migplay_core.h).
+/// Dart side of the RomRunner libretro bridge (see src/romrunner_core.h).
 ///
 /// The emulator runs on a native thread; Dart loads cores/games, sends
 /// button state and copies the latest frame once per screen refresh.
@@ -17,15 +17,15 @@ enum RetroButton {
   int get id => index;
 }
 
-class MigplayException implements Exception {
-  MigplayException(this.message);
+class RomRunnerException implements Exception {
+  RomRunnerException(this.message);
   final String message;
   @override
   String toString() => message;
 }
 
 /// A frame copied out of the emulator. [pixels] is RGBA8888 and is only
-/// valid until the next [MigplayCore.copyFrame] call.
+/// valid until the next [RomRunnerCore.copyFrame] call.
 class RetroFrame {
   RetroFrame(this.counter, this.width, this.height, this.pixels);
   final int counter;
@@ -34,7 +34,7 @@ class RetroFrame {
   final Uint8List pixels;
 }
 
-const String _libName = 'migplay_core';
+const String _libName = 'romrunner_core';
 
 final DynamicLibrary _lib = () {
   if (Platform.isMacOS || Platform.isIOS) {
@@ -64,34 +64,34 @@ typedef _DoubleVoid = double Function();
 typedef _StrVoidC = Pointer<Utf8> Function();
 typedef _StrVoid = Pointer<Utf8> Function();
 
-final _setDirectories = _lib.lookupFunction<_VoidStrStrC, _VoidStrStr>('mp_set_directories');
-final _setOption = _lib.lookupFunction<_VoidStrStrC, _VoidStrStr>('mp_set_option');
-final _loadCore = _lib.lookupFunction<_IntStrC, _IntStr>('mp_load_core');
-final _loadGame = _lib.lookupFunction<_IntStrC, _IntStr>('mp_load_game');
-final _start = _lib.lookupFunction<_IntVoidC, _IntVoid>('mp_start');
-final _setPaused = _lib.lookupFunction<_VoidIntC, _VoidInt>('mp_set_paused');
-final _setFastForward = _lib.lookupFunction<_VoidIntC, _VoidInt>('mp_set_fast_forward');
-final _setAudioEnabled = _lib.lookupFunction<_VoidIntC, _VoidInt>('mp_set_audio_enabled');
-final _reset = _lib.lookupFunction<_VoidVoidC, _VoidVoid>('mp_reset');
-final _setButton = _lib.lookupFunction<Void Function(Int32, Int32, Int32), void Function(int, int, int)>('mp_set_button');
-final _setButtons = _lib.lookupFunction<Void Function(Int32, Uint32), void Function(int, int)>('mp_set_buttons');
+final _setDirectories = _lib.lookupFunction<_VoidStrStrC, _VoidStrStr>('rr_set_directories');
+final _setOption = _lib.lookupFunction<_VoidStrStrC, _VoidStrStr>('rr_set_option');
+final _loadCore = _lib.lookupFunction<_IntStrC, _IntStr>('rr_load_core');
+final _loadGame = _lib.lookupFunction<_IntStrC, _IntStr>('rr_load_game');
+final _start = _lib.lookupFunction<_IntVoidC, _IntVoid>('rr_start');
+final _setPaused = _lib.lookupFunction<_VoidIntC, _VoidInt>('rr_set_paused');
+final _setFastForward = _lib.lookupFunction<_VoidIntC, _VoidInt>('rr_set_fast_forward');
+final _setAudioEnabled = _lib.lookupFunction<_VoidIntC, _VoidInt>('rr_set_audio_enabled');
+final _reset = _lib.lookupFunction<_VoidVoidC, _VoidVoid>('rr_reset');
+final _setButton = _lib.lookupFunction<Void Function(Int32, Int32, Int32), void Function(int, int, int)>('rr_set_button');
+final _setButtons = _lib.lookupFunction<Void Function(Int32, Uint32), void Function(int, int)>('rr_set_buttons');
 final _copyFrame = _lib.lookupFunction<
     Int64 Function(Pointer<Uint8>, Int32, Pointer<Int32>, Pointer<Int32>),
-    int Function(Pointer<Uint8>, int, Pointer<Int32>, Pointer<Int32>)>('mp_copy_frame');
-final _getFps = _lib.lookupFunction<_DoubleVoidC, _DoubleVoid>('mp_get_fps');
-final _getAspect = _lib.lookupFunction<_DoubleVoidC, _DoubleVoid>('mp_get_aspect_ratio');
-final _saveState = _lib.lookupFunction<_IntStrC, _IntStr>('mp_save_state');
-final _loadState = _lib.lookupFunction<_IntStrC, _IntStr>('mp_load_state');
-final _flushSram = _lib.lookupFunction<_IntVoidC, _IntVoid>('mp_flush_sram');
-final _unload = _lib.lookupFunction<_VoidVoidC, _VoidVoid>('mp_unload');
-final _lastError = _lib.lookupFunction<_StrVoidC, _StrVoid>('mp_last_error');
-final _coreName = _lib.lookupFunction<_StrVoidC, _StrVoid>('mp_core_name');
+    int Function(Pointer<Uint8>, int, Pointer<Int32>, Pointer<Int32>)>('rr_copy_frame');
+final _getFps = _lib.lookupFunction<_DoubleVoidC, _DoubleVoid>('rr_get_fps');
+final _getAspect = _lib.lookupFunction<_DoubleVoidC, _DoubleVoid>('rr_get_aspect_ratio');
+final _saveState = _lib.lookupFunction<_IntStrC, _IntStr>('rr_save_state');
+final _loadState = _lib.lookupFunction<_IntStrC, _IntStr>('rr_load_state');
+final _flushSram = _lib.lookupFunction<_IntVoidC, _IntVoid>('rr_flush_sram');
+final _unload = _lib.lookupFunction<_VoidVoidC, _VoidVoid>('rr_unload');
+final _lastError = _lib.lookupFunction<_StrVoidC, _StrVoid>('rr_last_error');
+final _coreName = _lib.lookupFunction<_StrVoidC, _StrVoid>('rr_core_name');
 
 /// Thin wrapper over the native bridge. Only one instance is meaningful
 /// because the bridge hosts a single core.
-class MigplayCore {
-  MigplayCore._();
-  static final MigplayCore instance = MigplayCore._();
+class RomRunnerCore {
+  RomRunnerCore._();
+  static final RomRunnerCore instance = RomRunnerCore._();
 
   Pointer<Uint8> _buf = nullptr;
   int _cap = 0;
@@ -108,7 +108,7 @@ class MigplayCore {
   }
 
   void _check(int rc) {
-    if (rc != 0) throw MigplayException(lastError);
+    if (rc != 0) throw RomRunnerException(lastError);
   }
 
   String get lastError => _lastError().toDartString();

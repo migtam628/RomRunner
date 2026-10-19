@@ -1,4 +1,4 @@
-# MigPlay
+# RomRunner
 
 A ROM emulator front end for **Android, Fire TV, iOS, macOS, Windows, Linux and web**, built in Flutter on top of [libretro](https://www.libretro.com/) emulation cores.
 
@@ -18,7 +18,7 @@ A ROM emulator front end for **Android, Fire TV, iOS, macOS, Windows, Linux and 
 ```
  Flutter UI (lib/)                 one codebase, all 7 targets
    ├─ library, pause menu, touch pad, TV focus
-   ├─ native targets ──► migplay_core (C, FFI plugin)
+   ├─ native targets ──► romrunner_core (C, FFI plugin)
    │                       ├─ dlopen()s a libretro core
    │                       ├─ emulation thread, audio-paced (miniaudio)
    │                       ├─ converts frames to RGBA, Dart paints them each vsync
@@ -38,8 +38,8 @@ app/                      Flutter app (runners for all platforms already generat
   lib/widgets/            touch controller, pause menu
   lib/input/              keyboard / gamepad / TV-remote bindings
   ios/embed_cores.sh      Xcode build phase that embeds + signs cores
-packages/migplay_core/    FFI plugin: the C libretro host
-  src/migplay_core.c      the bridge (one file)
+packages/romrunner_core/    FFI plugin: the C libretro host
+  src/romrunner_core.c      the bridge (one file)
   test/headless.c         headless test harness
 tool/fetch_cores.sh       downloads prebuilt cores per platform
 tool/test_bridge.sh       builds the bridge headless and runs a ROM through a core
@@ -91,8 +91,8 @@ A tag with a dash (`v0.2.0-beta.1`) becomes a pre-release. To test the pipeline 
 | Asset | Contents |
 |---|---|
 | `RomRunner-<ver>-android.apk` | Phones, tablets and Fire TV (arm64 + 32-bit ARM), cores included |
-| `RomRunner-<ver>-windows-x64.zip` | Unzip and run `migplay.exe`, cores included |
-| `RomRunner-<ver>-linux-x64.tar.gz` | Extract and run `./migplay`, cores included |
+| `RomRunner-<ver>-windows-x64.zip` | Unzip and run `RomRunner.exe`, cores included |
+| `RomRunner-<ver>-linux-x64.tar.gz` | Extract and run `./romrunner`, cores included |
 | `RomRunner-<ver>-macos.zip` | Universal app, not notarized (right-click → Open the first time); cores download on first use |
 | `RomRunner-<ver>-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore |
 | `RomRunner-<ver>-web.zip` | Static site; serve it over HTTP(S) |
@@ -136,7 +136,7 @@ Not verified (no hardware here): Android, Fire TV, iOS, macOS and Windows builds
 ## Next steps worth doing
 
 1. Gamepads on iOS/macOS/Windows/Linux (the `gamepads` package; Android/Fire TV already work).
-2. Core options UI (region, palette, renderer settings) — the bridge already supports `mp_set_option`.
+2. Core options UI (region, palette, renderer settings) — the bridge already supports `rr_set_option`.
 3. Box art via the libretro thumbnails repo, recent/favorites rows.
 4. Rewind and shaders (CRT/LCD) — the frame painter is the hook for shaders.
 5. Upload to the GPU via a texture instead of decoding an image per frame (only matters for high-res PS1 modes).

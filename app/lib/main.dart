@@ -5,11 +5,11 @@ import 'screens/library_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MigPlayApp());
+  runApp(const RomRunnerApp());
 }
 
-class MigPlayApp extends StatelessWidget {
-  const MigPlayApp({super.key});
+class RomRunnerApp extends StatelessWidget {
+  const RomRunnerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +19,7 @@ class MigPlayApp extends StatelessWidget {
       surface: const Color(0xFF0F1015),
     );
     return MaterialApp(
-      title: 'MigPlay',
+      title: 'RomRunner',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: scheme,

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Downloads prebuilt libretro cores from the libretro buildbot and puts them
-# where each MigPlay build expects them.
+# where each RomRunner build expects them.
 #
 #   tool/fetch_cores.sh android   # -> app/android/app/src/main/jniLibs/<abi>/ (phones + Fire TV)
 #   tool/fetch_cores.sh ios       # -> app/ios/cores/ (embedded by an Xcode build phase)
-#   tool/fetch_cores.sh macos     # -> ~/Library/Application Support/com.mttech.migplay/cores
-#   tool/fetch_cores.sh linux     # -> ~/.local/share/com.mttech.migplay/cores
-#   tool/fetch_cores.sh windows   # -> %APPDATA%/com.mttech/migplay/cores (run from Git Bash)
+#   tool/fetch_cores.sh macos     # -> ~/Library/Application Support/com.mttech.romrunner/cores
+#   tool/fetch_cores.sh linux     # -> ~/.local/share/com.mttech.romrunner/cores
+#   tool/fetch_cores.sh windows   # -> %APPDATA%/com.mttech/RomRunner/cores (run from Git Bash)
 #
 # Desktop builds also download a missing core automatically on first launch
 # of a game; the desktop targets here are for offline machines.
@@ -64,7 +64,7 @@ case "$target" in
     ;;
   macos)
     arch=$(uname -m); [ "$arch" = "arm64" ] || arch=x86_64
-    dest="${DEST:-$HOME/Library/Application Support/com.mttech.migplay/cores}"
+    dest="${DEST:-$HOME/Library/Application Support/com.mttech.romrunner/cores}"
     echo "macOS $arch -> $dest"
     for c in $CORES; do
       fetch "$BB/apple/osx/$arch/latest/${c}_libretro.dylib.zip" "${c}_libretro.dylib" "$dest/${c}_libretro.dylib"
@@ -73,14 +73,14 @@ case "$target" in
     ;;
   linux)
     arch=$(uname -m); [ "$arch" = "aarch64" ] || arch=x86_64
-    dest="${DEST:-${XDG_DATA_HOME:-$HOME/.local/share}/com.mttech.migplay/cores}"
+    dest="${DEST:-${XDG_DATA_HOME:-$HOME/.local/share}/com.mttech.romrunner/cores}"
     echo "Linux $arch -> $dest"
     for c in $CORES; do
       fetch "$BB/linux/$arch/latest/${c}_libretro.so.zip" "${c}_libretro.so" "$dest/${c}_libretro.so"
     done
     ;;
   windows)
-    dest="${DEST:-${APPDATA:?run this from Git Bash on Windows}/com.mttech/migplay/cores}"
+    dest="${DEST:-${APPDATA:?run this from Git Bash on Windows}/com.mttech/RomRunner/cores}"
     echo "Windows x86_64 -> $dest"
     for c in $CORES; do
       fetch "$BB/windows/x86_64/latest/${c}_libretro.dll.zip" "${c}_libretro.dll" "$dest/${c}_libretro.dll"

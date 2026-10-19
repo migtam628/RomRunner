@@ -1,4 +1,4 @@
-package com.mttech.migplay
+package com.mttech.romrunner
 
 import io.flutter.embedding.android.FlutterActivity
 

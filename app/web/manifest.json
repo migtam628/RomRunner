@@ -1,11 +1,11 @@
 {
-    "name": "migplay",
-    "short_name": "migplay",
+    "name": "RomRunner",
+    "short_name": "RomRunner",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Play your own retro game ROMs in the browser.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

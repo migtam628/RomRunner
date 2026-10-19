@@ -151,7 +151,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MigPlay', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        title: const Text('RomRunner', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5)),
         actions: [
           IconButton(tooltip: 'Info', onPressed: _showInfo, icon: const Icon(Icons.info_outline_rounded)),
           Padding(

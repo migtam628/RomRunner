@@ -7,7 +7,7 @@
 # Output: frame.ppm in the current directory (open with any image viewer).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/packages/migplay_core"
+SRC="$ROOT/packages/romrunner_core"
 OUT="$(mktemp -d)/headless"
-cc -O2 -Wall -DMP_NO_AUDIO "$SRC/src/migplay_core.c" "$SRC/test/headless.c" -o "$OUT" -ldl -lpthread
+cc -O2 -Wall -DRR_NO_AUDIO "$SRC/src/romrunner_core.c" "$SRC/test/headless.c" -o "$OUT" -ldl -lpthread
 "$OUT" "$1" "$2" frame.ppm "${3:-600}"

@@ -1,5 +1,5 @@
-name: migplay_core
-description: "libretro bridge for MigPlay (FFI plugin)."
+name: romrunner_core
+description: "libretro bridge for RomRunner (FFI plugin)."
 version: 0.1.0
 publish_to: none
 

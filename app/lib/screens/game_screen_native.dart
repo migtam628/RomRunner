@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:migplay_core/migplay_core.dart';
+import 'package:romrunner_core/romrunner_core.dart';
 
 import '../input/key_mapping.dart';
 import '../models/console.dart';
@@ -23,7 +23,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  final _core = MigplayCore.instance;
+  final _core = RomRunnerCore.instance;
   final _focus = FocusNode(debugLabel: 'game');
   Ticker? _ticker;
 
@@ -64,7 +64,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         });
       }
       if (corePath == null) {
-        throw MigplayException(
+        throw RomRunnerException(
           'The ${_console.core} core is not bundled with this build.\n'
           'Run tool/fetch_cores.sh for this platform and rebuild.',
         );
@@ -189,7 +189,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         case PauseAction.resume || null:
           break;
       }
-    } on MigplayException catch (e) {
+    } on RomRunnerException catch (e) {
       _toast(e.message);
     }
     _core.paused = false;

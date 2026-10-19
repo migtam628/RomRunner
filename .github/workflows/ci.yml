@@ -30,7 +30,7 @@ jobs:
           flutter analyze
           flutter test
       - name: Plugin
-        working-directory: packages/migplay_core
+        working-directory: packages/romrunner_core
         run: |
           flutter pub get
           flutter analyze
@@ -44,7 +44,7 @@ jobs:
         run: |
           cc -O2 -Wall -Wextra -Wno-unused-parameter -Werror \
              -Wno-error=format-truncation \
-             -c packages/migplay_core/src/migplay_core.c -o /tmp/bridge.o
+             -c packages/romrunner_core/src/romrunner_core.c -o /tmp/bridge.o
       - name: Headless run against Gambatte + cpu_instrs
         run: |
           DEST=/tmp/cores CORES=gambatte tool/fetch_cores.sh linux

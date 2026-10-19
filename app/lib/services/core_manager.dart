@@ -14,7 +14,7 @@ import 'paths.dart';
 ///   android/app/src/main/jniLibs) and opened by library name.
 /// - iOS: cores are embedded in Runner.app/Frameworks by an Xcode build phase.
 /// - macOS / Windows / Linux: downloaded on first use from the libretro
-///   buildbot into the app support folder, or picked up from MIGPLAY_CORES.
+///   buildbot into the app support folder, or picked up from ROMRUNNER_CORES.
 class CoreManager {
   CoreManager._();
   static final instance = CoreManager._();
@@ -55,7 +55,7 @@ class CoreManager {
       return File(fw).existsSync() ? fw : null;
     }
     final candidates = <String>[
-      if (Platform.environment['MIGPLAY_CORES'] case final env?) p.join(env, name),
+      if (Platform.environment['ROMRUNNER_CORES'] case final env?) p.join(env, name),
       p.join(File(Platform.resolvedExecutable).parent.path, 'cores', name),
       p.join((await AppPaths.get()).cores, name),
     ];

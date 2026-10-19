@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:migplay/models/console.dart';
-import 'package:migplay/models/game.dart';
-import 'package:migplay/services/library.dart';
+import 'package:romrunner/models/console.dart';
+import 'package:romrunner/models/game.dart';
+import 'package:romrunner/services/library.dart';
 
 void main() {
   test('extensions map to consoles', () {

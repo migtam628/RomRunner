@@ -1,13 +1,13 @@
 Pod::Spec.new do |s|
-  s.name             = 'migplay_core'
+  s.name             = 'romrunner_core'
   s.version          = '0.1.0'
-  s.summary          = 'libretro bridge for MigPlay.'
-  s.description      = 'Hosts libretro cores, drives audio and converts frames for the MigPlay Flutter app.'
+  s.summary          = 'libretro bridge for RomRunner.'
+  s.description      = 'Hosts libretro cores, drives audio and converts frames for the RomRunner Flutter app.'
   s.homepage         = 'https://mttechservices.local'
   s.license          = { :type => 'Proprietary' }
   s.author           = { 'MT Tech Services' => 'migtam055@gmail.com' }
   s.source           = { :path => '.' }
-  # Classes/migplay_core.m includes ../../src/migplay_core.c so both
+  # Classes/romrunner_core.m includes ../../src/romrunner_core.c so both
   # platforms share one source. It is .m so miniaudio can use AVFoundation.
   s.source_files     = 'Classes/**/*'
   s.requires_arc     = false

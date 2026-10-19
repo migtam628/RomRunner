@@ -1,8 +1,8 @@
-// MigPlay core bridge — a minimal libretro frontend.
+// RomRunner core bridge — a minimal libretro frontend.
 // One core and one game at a time. All state is global on purpose: the app
 // only ever runs a single emulator instance.
 
-#include "migplay_core.h"
+#include "romrunner_core.h"
 #include "third_party/libretro.h"
 
 #include <stdarg.h>
@@ -15,24 +15,24 @@
   #define WIN32_LEAN_AND_MEAN
   #include <windows.h>
   #include <mmsystem.h>
-  typedef HMODULE mp_lib_t;
-  typedef HANDLE mp_thread_t;
-  typedef CRITICAL_SECTION mp_mutex_t;
+  typedef HMODULE rr_lib_t;
+  typedef HANDLE rr_thread_t;
+  typedef CRITICAL_SECTION rr_mutex_t;
 #else
   #include <dlfcn.h>
   #include <pthread.h>
   #include <time.h>
   #include <unistd.h>
-  typedef void* mp_lib_t;
-  typedef pthread_t mp_thread_t;
-  typedef pthread_mutex_t mp_mutex_t;
+  typedef void* rr_lib_t;
+  typedef pthread_t rr_thread_t;
+  typedef pthread_mutex_t rr_mutex_t;
 #endif
 
 #if defined(__ANDROID__)
   #include <android/log.h>
 #endif
 
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
   #define MINIAUDIO_IMPLEMENTATION
   #define MA_NO_DECODING
   #define MA_NO_ENCODING
@@ -47,32 +47,32 @@
 /* Platform helpers                                                    */
 /* ------------------------------------------------------------------ */
 
-static void mp_log(const char* fmt, ...) {
+static void rr_log(const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
 #if defined(__ANDROID__)
-  __android_log_vprint(ANDROID_LOG_INFO, "MigPlay", fmt, ap);
+  __android_log_vprint(ANDROID_LOG_INFO, "RomRunner", fmt, ap);
 #else
   vfprintf(stderr, fmt, ap);
 #endif
   va_end(ap);
 }
 
-static void mutex_init(mp_mutex_t* m) {
+static void mutex_init(rr_mutex_t* m) {
 #if defined(_WIN32)
   InitializeCriticalSection(m);
 #else
   pthread_mutex_init(m, NULL);
 #endif
 }
-static void mutex_lock(mp_mutex_t* m) {
+static void mutex_lock(rr_mutex_t* m) {
 #if defined(_WIN32)
   EnterCriticalSection(m);
 #else
   pthread_mutex_lock(m);
 #endif
 }
-static void mutex_unlock(mp_mutex_t* m) {
+static void mutex_unlock(rr_mutex_t* m) {
 #if defined(_WIN32)
   LeaveCriticalSection(m);
 #else
@@ -102,7 +102,7 @@ static void sleep_ms(int ms) {
 #endif
 }
 
-static FILE* mp_fopen(const char* path, const char* mode) {
+static FILE* rr_fopen(const char* path, const char* mode) {
 #if defined(_WIN32)
   wchar_t wpath[MAX_PATH * 2], wmode[8];
   MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH * 2);
@@ -113,7 +113,7 @@ static FILE* mp_fopen(const char* path, const char* mode) {
 #endif
 }
 
-static mp_lib_t lib_open(const char* path) {
+static rr_lib_t lib_open(const char* path) {
 #if defined(_WIN32)
   wchar_t wpath[MAX_PATH * 2];
   MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH * 2);
@@ -122,14 +122,14 @@ static mp_lib_t lib_open(const char* path) {
   return dlopen(path, RTLD_NOW | RTLD_LOCAL);
 #endif
 }
-static void* lib_sym(mp_lib_t lib, const char* name) {
+static void* lib_sym(rr_lib_t lib, const char* name) {
 #if defined(_WIN32)
   return (void*)GetProcAddress(lib, name);
 #else
   return dlsym(lib, name);
 #endif
 }
-static void lib_close(mp_lib_t lib) {
+static void lib_close(rr_lib_t lib) {
 #if defined(_WIN32)
   FreeLibrary(lib);
 #else
@@ -138,7 +138,7 @@ static void lib_close(mp_lib_t lib) {
 }
 
 static unsigned char* read_file(const char* path, size_t* size) {
-  FILE* f = mp_fopen(path, "rb");
+  FILE* f = rr_fopen(path, "rb");
   if (!f) return NULL;
   fseek(f, 0, SEEK_END);
   long len = ftell(f);
@@ -155,7 +155,7 @@ static unsigned char* read_file(const char* path, size_t* size) {
 }
 
 static int write_file(const char* path, const void* data, size_t size) {
-  FILE* f = mp_fopen(path, "wb");
+  FILE* f = rr_fopen(path, "wb");
   if (!f) return -1;
   size_t n = fwrite(data, 1, size, f);
   fclose(f);
@@ -194,7 +194,7 @@ typedef struct {
 typedef struct { char* key; char* value; bool user_set; } option_t;
 
 static struct {
-  mp_lib_t lib;
+  rr_lib_t lib;
   core_api_t api;
   bool core_inited;
   bool game_loaded;
@@ -217,7 +217,7 @@ static struct {
   bool options_dirty;
 
   // Video: back buffer written on the emu thread, front copied to Dart.
-  mp_mutex_t frame_mutex;
+  rr_mutex_t frame_mutex;
   uint8_t* back;
   uint8_t* front;
   size_t frame_cap;
@@ -228,8 +228,8 @@ static struct {
   volatile uint32_t buttons[4];
 
   // Loop
-  mp_mutex_t core_mutex;
-  mp_thread_t thread;
+  rr_mutex_t core_mutex;
+  rr_thread_t thread;
   volatile int running;
   volatile int paused;
   volatile int fast_forward;
@@ -240,7 +240,7 @@ static struct {
   char error[512];
   bool mutexes_ready;
 
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
   ma_device device;
   ma_pcm_rb ring;
   bool audio_ready;
@@ -252,7 +252,7 @@ static void set_error(const char* fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(g.error, sizeof g.error, fmt, ap);
   va_end(ap);
-  mp_log("[migplay] error: %s\n", g.error);
+  rr_log("[romrunner] error: %s\n", g.error);
 }
 
 static void ensure_mutexes(void) {
@@ -325,7 +325,7 @@ static void RETRO_CALLCONV core_log(enum retro_log_level level, const char* fmt,
   va_start(ap, fmt);
   vsnprintf(buf, sizeof buf, fmt, ap);
   va_end(ap);
-  mp_log("[core] %s", buf);
+  rr_log("[core] %s", buf);
 }
 
 static bool RETRO_CALLCONV env_cb(unsigned cmd, void* data) {
@@ -399,7 +399,7 @@ static bool RETRO_CALLCONV env_cb(unsigned cmd, void* data) {
       return true;
     case RETRO_ENVIRONMENT_SET_MESSAGE: {
       const struct retro_message* m = (const struct retro_message*)data;
-      if (m && m->msg) mp_log("[core message] %s\n", m->msg);
+      if (m && m->msg) rr_log("[core message] %s\n", m->msg);
       return true;
     }
     default:
@@ -469,7 +469,7 @@ static void RETRO_CALLCONV video_cb(const void* data, unsigned w, unsigned h, si
 }
 
 static size_t push_audio(const int16_t* frames, size_t count) {
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
   if (!g.audio_ready || !g.audio_enabled || g.fast_forward) return count;
   size_t done = 0;
   while (done < count) {
@@ -511,7 +511,7 @@ static int16_t RETRO_CALLCONV input_state_cb(unsigned port, unsigned device, uns
 /* Audio device                                                        */
 /* ------------------------------------------------------------------ */
 
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
 static void ma_callback(ma_device* dev, void* out, const void* in, ma_uint32 frames) {
   (void)dev; (void)in;
   int16_t* o = (int16_t*)out;
@@ -548,7 +548,7 @@ static bool audio_start(void) {
   cfg.periodSizeInMilliseconds = 10;
   if (ma_device_init(NULL, &cfg, &g.device) != MA_SUCCESS) {
     ma_pcm_rb_uninit(&g.ring);
-    mp_log("[migplay] no audio device; using timer pacing\n");
+    rr_log("[romrunner] no audio device; using timer pacing\n");
     return false;
   }
   if (ma_device_start(&g.device) != MA_SUCCESS) {
@@ -588,7 +588,7 @@ static void loop_body(void) {
       g.av_changed = 0;
       fps = g.av.timing.fps > 1 ? g.av.timing.fps : 60.0;
       frame_time = 1.0 / fps;
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
       if (g.audio_ready) audio_start();
 #endif
     }
@@ -602,7 +602,7 @@ static void loop_body(void) {
       for (int i = 0; i < 4 && g.running; i++) run_one_frame();
       next += frame_time;
     } else {
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
       if (g.audio_ready && g.audio_enabled) {
         // Audio-paced: keep ~3 frames of sound queued, run when below.
         ma_uint32 target = (ma_uint32)(g.av.timing.sample_rate * frame_time * 3);
@@ -620,11 +620,11 @@ static void loop_body(void) {
       if (wait > 0) sleep_ms((int)(wait * 1000));
       else if (wait < -0.25) next = now_seconds();  // fell behind; resync
     }
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
   after_frame:
 #endif
     if (now_seconds() - last_sram > 10.0) {
-      mp_flush_sram();
+      rr_flush_sram();
       last_sram = now_seconds();
     }
   }
@@ -650,13 +650,13 @@ static void* thread_main(void* arg) {
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
-void mp_set_directories(const char* system_dir, const char* save_dir) {
+void rr_set_directories(const char* system_dir, const char* save_dir) {
   ensure_mutexes();
   snprintf(g.system_dir, sizeof g.system_dir, "%s", system_dir ? system_dir : "");
   snprintf(g.save_dir, sizeof g.save_dir, "%s", save_dir ? save_dir : "");
 }
 
-void mp_set_option(const char* key, const char* value) {
+void rr_set_option(const char* key, const char* value) {
   ensure_mutexes();
   if (!key || !value) return;
   mutex_lock(&g.core_mutex);
@@ -670,9 +670,9 @@ void mp_set_option(const char* key, const char* value) {
     if (!g.api.field) { set_error("core is missing %s", name); goto fail; } \
   } while (0)
 
-int mp_load_core(const char* core_path) {
+int rr_load_core(const char* core_path) {
   ensure_mutexes();
-  mp_unload();
+  rr_unload();
   g.lib = lib_open(core_path);
   if (!g.lib) {
 #if defined(_WIN32)
@@ -749,7 +749,7 @@ static void build_sram_path(const char* rom_path) {
     g.sram_path[0] = 0;
 }
 
-int mp_load_game(const char* rom_path) {
+int rr_load_game(const char* rom_path) {
   if (!g.core_inited) { set_error("no core loaded"); return -1; }
   if (g.game_loaded) { set_error("a game is already loaded"); return -1; }
 
@@ -793,10 +793,10 @@ int mp_load_game(const char* rom_path) {
   return 0;
 }
 
-int mp_start(void) {
+int rr_start(void) {
   if (!g.game_loaded) { set_error("no game loaded"); return -1; }
   if (g.thread_started) return 0;
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
   if (g.audio_enabled) audio_start();
 #endif
   g.running = 1;
@@ -825,34 +825,34 @@ static void stop_thread(void) {
   pthread_join(g.thread, NULL);
 #endif
   g.thread_started = false;
-#ifndef MP_NO_AUDIO
+#ifndef RR_NO_AUDIO
   audio_stop();
 #endif
 }
 
-void mp_set_paused(int paused) { g.paused = paused; }
-void mp_set_fast_forward(int enabled) { g.fast_forward = enabled; }
-void mp_set_audio_enabled(int enabled) { ensure_mutexes(); g.audio_enabled = enabled; }
+void rr_set_paused(int paused) { g.paused = paused; }
+void rr_set_fast_forward(int enabled) { g.fast_forward = enabled; }
+void rr_set_audio_enabled(int enabled) { ensure_mutexes(); g.audio_enabled = enabled; }
 
-void mp_reset(void) {
+void rr_reset(void) {
   if (!g.game_loaded) return;
   mutex_lock(&g.core_mutex);
   g.api.reset();
   mutex_unlock(&g.core_mutex);
 }
 
-void mp_set_button(int port, int id, int pressed) {
+void rr_set_button(int port, int id, int pressed) {
   if (port < 0 || port > 3 || id < 0 || id > 15) return;
   if (pressed) g.buttons[port] |= (1u << id);
   else g.buttons[port] &= ~(1u << id);
 }
 
-void mp_set_buttons(int port, uint32_t mask) {
+void rr_set_buttons(int port, uint32_t mask) {
   if (port < 0 || port > 3) return;
   g.buttons[port] = mask & 0xFFFF;
 }
 
-int64_t mp_copy_frame(uint8_t* dst, int32_t capacity, int32_t* width, int32_t* height) {
+int64_t rr_copy_frame(uint8_t* dst, int32_t capacity, int32_t* width, int32_t* height) {
   if (!g.mutexes_ready) return -1;
   mutex_lock(&g.frame_mutex);
   int64_t counter = g.frame_counter;
@@ -866,18 +866,18 @@ int64_t mp_copy_frame(uint8_t* dst, int32_t capacity, int32_t* width, int32_t* h
   return counter;
 }
 
-double mp_get_fps(void) { return g.av.timing.fps; }
-double mp_get_sample_rate(void) { return g.av.timing.sample_rate; }
-double mp_get_aspect_ratio(void) {
+double rr_get_fps(void) { return g.av.timing.fps; }
+double rr_get_sample_rate(void) { return g.av.timing.sample_rate; }
+double rr_get_aspect_ratio(void) {
   float a = g.av.geometry.aspect_ratio;
   if (a > 0) return a;
   if (g.av.geometry.base_height) return (double)g.av.geometry.base_width / g.av.geometry.base_height;
   return 0;
 }
-int32_t mp_get_max_width(void) { return (int32_t)g.av.geometry.max_width; }
-int32_t mp_get_max_height(void) { return (int32_t)g.av.geometry.max_height; }
+int32_t rr_get_max_width(void) { return (int32_t)g.av.geometry.max_width; }
+int32_t rr_get_max_height(void) { return (int32_t)g.av.geometry.max_height; }
 
-int mp_save_state(const char* path) {
+int rr_save_state(const char* path) {
   if (!g.game_loaded) { set_error("no game loaded"); return -1; }
   mutex_lock(&g.core_mutex);
   size_t size = g.api.serialize_size();
@@ -891,7 +891,7 @@ int mp_save_state(const char* path) {
   return rc;
 }
 
-int mp_load_state(const char* path) {
+int rr_load_state(const char* path) {
   if (!g.game_loaded) { set_error("no game loaded"); return -1; }
   size_t size = 0;
   unsigned char* buf = read_file(path, &size);
@@ -904,7 +904,7 @@ int mp_load_state(const char* path) {
   return 0;
 }
 
-int mp_flush_sram(void) {
+int rr_flush_sram(void) {
   if (!g.game_loaded || !g.sram_path[0]) return 0;
   size_t size = g.api.get_memory_size(RETRO_MEMORY_SAVE_RAM);
   void* mem = g.api.get_memory_data(RETRO_MEMORY_SAVE_RAM);
@@ -912,11 +912,11 @@ int mp_flush_sram(void) {
   return write_file(g.sram_path, mem, size);
 }
 
-void mp_unload(void) {
+void rr_unload(void) {
   if (!g.mutexes_ready) return;
   stop_thread();
   if (g.game_loaded) {
-    mp_flush_sram();
+    rr_flush_sram();
     g.api.unload_game();
     g.game_loaded = false;
   }
@@ -937,10 +937,10 @@ void mp_unload(void) {
   g.core_name[0] = 0;
 }
 
-const char* mp_last_error(void) { return g.error; }
-const char* mp_core_name(void) { return g.core_name; }
+const char* rr_last_error(void) { return g.error; }
+const char* rr_core_name(void) { return g.core_name; }
 
-int mp_run_frames(int count) {
+int rr_run_frames(int count) {
   if (!g.game_loaded) { set_error("no game loaded"); return -1; }
   for (int i = 0; i < count; i++) run_one_frame();
   return 0;

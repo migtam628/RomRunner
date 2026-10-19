@@ -188,7 +188,7 @@ jobs:
         # Cores are not bundled: the app downloads them on first use, which
         # avoids Gatekeeper quarantining unsigned dylibs inside the bundle.
         run: |
-          app=app/build/macos/Build/Products/Release/migplay.app
+          app=app/build/macos/Build/Products/Release/RomRunner.app
           mkdir -p dist
           ditto -c -k --keepParent "$app" "dist/${APP}-${{ needs.version.outputs.name }}-macos.zip"
       - uses: actions/upload-artifact@v6
@@ -283,9 +283,9 @@ jobs:
             | Platform | File | Install |
             |---|---|---|
             | Android phones, tablets, Fire TV | `-android.apk` | Sideload: `adb install -r <file>` (Fire TV: `adb connect <tv-ip>` first) |
-            | Windows | `-windows-x64.zip` | Unzip, run `migplay.exe`. Cores included. |
+            | Windows | `-windows-x64.zip` | Unzip, run `RomRunner.exe`. Cores included. |
             | macOS | `-macos.zip` | Unzip, then right-click the app → Open the first time (not notarized). Cores download on first game. |
-            | Linux | `-linux-x64.tar.gz` | Extract, run `./migplay`. Needs GTK 3. Cores included. |
+            | Linux | `-linux-x64.tar.gz` | Extract, run `./romrunner`. Needs GTK 3. Cores included. |
             | iOS | `-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore. |
             | Web | `-web.zip` | Serve the folder over HTTP(S); games need internet for EmulatorJS. |
 

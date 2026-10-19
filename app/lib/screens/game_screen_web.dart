@@ -22,7 +22,7 @@ class _GameScreenState extends State<GameScreen> {
   static const _ejsData = 'https://cdn.emulatorjs.org/stable/data/';
   static int _nextId = 0;
 
-  late final String _viewType = 'migplay-ejs-${_nextId++}';
+  late final String _viewType = 'romrunner-ejs-${_nextId++}';
   String? _blobUrl;
 
   @override

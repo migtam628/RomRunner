@@ -17,7 +17,7 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
-  final _library = GameLibrary.create();
+  final _library = GameLibrary.instance;
   List<Game> _games = [];
   Console? _filter;
   bool _loading = true;
@@ -80,6 +80,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  Future<void> _addFolder() async {
+    if (_importing) return;
+    setState(() => _importing = true);
+    try {
+      final r = await _library.addFolder(askPath: () => askFolderPath(context));
+      await _reload();
+      if (!mounted) return;
+      if (r.error != null) {
+        _snack(r.error!);
+      } else if (r.folder != null) {
+        final parts = [
+          r.found == 1 ? 'Found 1 game' : 'Found ${r.found} games',
+          if (r.skipped > 0)
+            'skipped ${r.skipped} .bin/.zip file${r.skipped == 1 ? '' : 's'} (put .bin files in a folder named after '
+                'the system, and unzip archives with Add ROMs)',
+        ];
+        _snack(parts.join(' · '));
+      }
+    } catch (e) {
+      _snack('Could not read that folder: $e');
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
   void _snack(String msg, {SnackBarAction? action}) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(msg), action: action));
@@ -104,6 +129,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _remove(Game game) async {
+    if (game.folder != null) {
+      _snack('${game.title} comes from ${game.folder}. Remove the folder in Settings to hide its games.',
+          action: SnackBarAction(label: 'Settings', onPressed: _openSettings));
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -176,6 +206,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         actions: [
           IconButton(tooltip: 'Info', onPressed: _showInfo, icon: const Icon(Icons.info_outline_rounded)),
           IconButton(tooltip: 'Settings', onPressed: _openSettings, icon: const Icon(Icons.settings_outlined)),
+          if (_library.supportsFolders)
+            IconButton(
+              tooltip: 'Add folder',
+              onPressed: _importing ? null : _addFolder,
+              icon: const Icon(Icons.create_new_folder_outlined),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
@@ -191,7 +227,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _games.isEmpty
-              ? _EmptyState(onImport: _import)
+              ? _EmptyState(onImport: _import, onAddFolder: _library.supportsFolders ? _addFolder : null)
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -238,8 +274,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onImport});
+  const _EmptyState({required this.onImport, this.onAddFolder});
   final VoidCallback onImport;
+  final VoidCallback? onAddFolder;
 
   @override
   Widget build(BuildContext context) {
@@ -268,11 +305,24 @@ class _EmptyState extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
-            FilledButton.icon(
-              autofocus: true,
-              onPressed: onImport,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add ROMs'),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  autofocus: true,
+                  onPressed: onImport,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add ROMs'),
+                ),
+                if (onAddFolder != null)
+                  OutlinedButton.icon(
+                    onPressed: onAddFolder,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    label: const Text('Add folder'),
+                  ),
+              ],
             ),
           ],
         ),
@@ -401,4 +451,25 @@ class _GameCardState extends State<_GameCard> {
       ),
     );
   }
+}
+
+/// Fallback when a device has no folder picker: type the path instead.
+Future<String?> askFolderPath(BuildContext context) {
+  final controller = TextEditingController(text: '/storage/emulated/0/ROMs');
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Folder path'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(helperText: 'This device has no folder picker. Type the folder\'s path.'),
+        onSubmitted: (v) => Navigator.pop(context, v.trim()),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Add')),
+      ],
+    ),
+  );
 }

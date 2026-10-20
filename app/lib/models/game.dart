@@ -9,6 +9,7 @@ class Game {
     required this.fileName,
     this.path,
     this.bytes,
+    this.folder,
   });
 
   final String title;
@@ -20,6 +21,9 @@ class Game {
 
   /// ROM contents on web (kept in memory for the session).
   final Uint8List? bytes;
+
+  /// The library folder this game was found in (scanned in place), if any.
+  final String? folder;
 
   String get id => '${console.name}/$fileName';
 

@@ -1,11 +1,17 @@
 package com.mttech.romrunner
 
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.OpenableColumns
+import android.provider.Settings
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -20,6 +26,7 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
     private var pendingPick: MethodChannel.Result? = null
+    private var pendingAccess: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -27,13 +34,62 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "emulators" -> result.success(findEmulators())
                 "pickGames" -> pickGames(result)
-                "launch" -> launch(call.argument<String>("package")!!, call.argument<String>("uri")!!, result)
+                "launch" -> launch(call.argument<String>("package")!!, Uri.parse(call.argument<String>("uri")!!), result)
+                "launchFile" -> launchFile(call.argument<String>("package")!!, call.argument<String>("path")!!, result)
                 "release" -> {
                     release(call.argument<String>("uri")!!)
                     result.success(null)
                 }
                 else -> result.notImplemented()
             }
+        }
+        // Reading game folders in place.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasAccess" -> result.success(hasStorageAccess())
+                "requestAccess" -> requestStorageAccess(result)
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun hasStorageAccess(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+
+    private fun requestStorageAccess(result: MethodChannel.Result) {
+        if (hasStorageAccess()) {
+            result.success(true)
+            return
+        }
+        pendingAccess = result
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Settings page with the "Allow access to manage all files" switch.
+            val perApp = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))
+            val general = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+            for (intent in listOf(perApp, general)) {
+                try {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(intent, ACCESS_REQUEST)
+                    return
+                } catch (_: ActivityNotFoundException) {
+                }
+            }
+            pendingAccess = null
+            result.success(false) // e.g. a TV build without that settings page
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), ACCESS_REQUEST)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == ACCESS_REQUEST) {
+            pendingAccess?.success(hasStorageAccess())
+            pendingAccess = null
         }
     }
 
@@ -80,6 +136,11 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ACCESS_REQUEST) {
+            pendingAccess?.success(hasStorageAccess())
+            pendingAccess = null
+            return
+        }
         if (requestCode != PICK_REQUEST) return
         val result = pendingPick ?: return
         pendingPick = null
@@ -111,8 +172,18 @@ class MainActivity : FlutterActivity() {
         return uri.lastPathSegment?.substringAfterLast('/') ?: "game"
     }
 
-    private fun launch(pkg: String, uriString: String, result: MethodChannel.Result) {
-        val uri = Uri.parse(uriString)
+    /** A game found in a folder: share it through our FileProvider. */
+    private fun launchFile(pkg: String, path: String, result: MethodChannel.Result) {
+        val uri = try {
+            FileProvider.getUriForFile(this, "$packageName.games", java.io.File(path))
+        } catch (e: IllegalArgumentException) {
+            result.error("no_access", "RomRunner can't share $path.", null)
+            return
+        }
+        launch(pkg, uri, result)
+    }
+
+    private fun launch(pkg: String, uri: Uri, result: MethodChannel.Result) {
         try {
             val intent = gameIntent(uri)
             if (pkg == CHOOSE_EACH_TIME) {
@@ -140,9 +211,14 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CHANNEL = "romrunner/switch"
+        private const val STORAGE_CHANNEL = "romrunner/storage"
+        private const val ACCESS_REQUEST = 4202
         private const val MIME = "application/octet-stream"
         private const val PICK_REQUEST = 4201
         private const val CHOOSE_EACH_TIME = "*"
         private val HINTS = listOf("eden", "citron", "yuzu", "suyu", "sudachi", "kenji", "ryujinx", "ryubing", "torzu", "sumi")
     }
 }
+
+/** Own subclass so it can't clash with FileProviders declared by plugins. */
+class GameFileProvider : FileProvider()

@@ -56,4 +56,34 @@ void main() {
     expect(switchLaunchArgs('/Applications/Ryujinx.app', '/g/Game.nsp'), ['/g/Game.nsp', '--fullscreen']);
     expect(switchLaunchArgs('/home/me/Ryubing-1.3.AppImage', '/g/a.nsp'), ['/g/a.nsp', '--fullscreen']);
   });
+
+  test('folder names pick the system for ambiguous files', () {
+    expect(consoleFromFolderName('/roms/Sega Genesis/Sonic.bin'), Console.genesis);
+    expect(consoleFromFolderName(r'D:\Games\Mega Drive\USA\Sonic.bin'), Console.genesis);
+    expect(consoleFromFolderName('/roms/PSX/Crash/Crash.bin'), Console.ps1);
+    expect(consoleFromFolderName('/home/me/Downloads/Sonic.bin'), isNull);
+  });
+
+  test('folder scan: sheets hide tracks, hints place .bin, archives skipped', () {
+    final scan = classifyFolderPaths([
+      '/r/NES/Zelda (USA).nes',
+      '/r/PS1/Crash/Crash.cue',
+      '/r/PS1/Crash/Crash (Track 1).bin',
+      '/r/PS1/Crash/Crash (Track 2).bin',
+      '/r/Genesis/Sonic.bin',
+      '/r/misc/Unknown.bin',
+      '/r/misc/Pack.zip',
+      '/r/misc/readme.txt',
+      '/r/misc/._Zelda.nes',
+      '/r/bios/scph5501.bin',
+      '/r/Switch/Game [0100][v0].nsp',
+    ]);
+    expect(scan.games, {
+      '/r/NES/Zelda (USA).nes': Console.nes,
+      '/r/PS1/Crash/Crash.cue': Console.ps1,
+      '/r/Genesis/Sonic.bin': Console.genesis,
+      '/r/Switch/Game [0100][v0].nsp': Console.nswitch,
+    });
+    expect(scan.skipped, 2); // Unknown.bin + Pack.zip
+  });
 }

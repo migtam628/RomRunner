@@ -214,7 +214,12 @@ class NativeSwitchSupport implements SwitchSupport {
 
     if (_android) {
       try {
-        await _channel.invokeMethod('launch', {'package': emu.id, 'uri': path});
+        // Linked via the picker: content:// URI. Found in a game folder: a
+        // real path, shared through RomRunner's file provider.
+        await _channel.invokeMethod(path.startsWith('/') ? 'launchFile' : 'launch', {
+          'package': emu.id,
+          if (path.startsWith('/')) 'path': path else 'uri': path,
+        });
       } on PlatformException catch (e) {
         throw SwitchLaunchException(e.message ?? 'Could not open ${emu.label}.', needsSetup: e.code == 'not_found');
       }

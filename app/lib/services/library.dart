@@ -1,3 +1,5 @@
+import 'package:path/path.dart' as p;
+
 import '../models/console.dart';
 import '../models/game.dart';
 import 'library_native.dart' if (dart.library.js_interop) 'library_web.dart' as impl;
@@ -6,7 +8,8 @@ import 'library_native.dart' if (dart.library.js_interop) 'library_web.dart' as 
 typedef ConsoleResolver = Future<Console?> Function(String fileName);
 
 abstract class GameLibrary {
-  static GameLibrary create() => impl.createLibrary();
+  /// One shared library (the web build keeps its games in memory).
+  static final GameLibrary instance = impl.createLibrary();
 
   Future<List<Game>> load();
 
@@ -17,6 +20,34 @@ abstract class GameLibrary {
 
   /// Human-readable storage info for the settings sheet.
   Future<String> describeStorage();
+
+  /// Whether [addFolder] is available here.
+  bool get supportsFolders;
+
+  /// True when folders stay linked and are rescanned (desktop, Android);
+  /// false when picking a folder is a one-time import (web).
+  bool get foldersAreLinked;
+
+  /// Lets the user pick a folder of games. [askPath] is a fallback for
+  /// devices without a folder picker (some Fire TV models): it should ask
+  /// the user to type a path.
+  Future<FolderResult> addFolder({required Future<String?> Function() askPath});
+
+  /// Linked folders (empty on platforms where folders aren't linked).
+  Future<List<String>> folders();
+  Future<void> removeFolder(String path);
+}
+
+class FolderResult {
+  const FolderResult({this.folder, this.found = 0, this.skipped = 0, this.error});
+
+  /// The folder that was added; null if cancelled or failed.
+  final String? folder;
+  final int found;
+
+  /// Files that look like games but couldn't be assigned to a system.
+  final int skipped;
+  final String? error;
 }
 
 class ImportResult {
@@ -58,4 +89,77 @@ Future<Map<String, Console>> classifyFiles(List<String> names, ConsoleResolver r
     }
   }
   return result;
+}
+
+/// Normalised folder names that identify a system (for ambiguous files
+/// such as a Genesis ".bin" sitting in a folder called "Mega Drive").
+const _folderHints = <Console, List<String>>{
+  Console.nes: ['nes', 'famicom', 'fds', 'nintendoentertainmentsystem'],
+  Console.gb: ['gb', 'gbc', 'gameboy', 'gameboycolor', 'gameboycolour'],
+  Console.gba: ['gba', 'gameboyadvance'],
+  Console.snes: ['snes', 'sfc', 'supernintendo', 'superfamicom', 'supernes'],
+  Console.genesis: [
+    'genesis', 'megadrive', 'md', 'segagenesis', 'segamegadrive', 'mastersystem', 'sms',
+    'segamastersystem', 'gamegear', 'gg', 'segagamegear', 'sega',
+  ],
+  Console.ps1: ['ps1', 'psx', 'playstation', 'ps', 'sonyplaystation', 'playstation1'],
+  Console.nswitch: ['switch', 'nsw', 'nintendoswitch'],
+};
+
+/// The system suggested by the nearest folder name in [path], if any.
+Console? consoleFromFolderName(String path) {
+  final parts = path.split(RegExp(r'[/\\]'));
+  for (var i = parts.length - 2; i >= 0; i--) {
+    final n = parts[i].toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (n.isEmpty) continue;
+    for (final MapEntry(key: c, value: names) in _folderHints.entries) {
+      if (names.contains(n)) return c;
+    }
+  }
+  return null;
+}
+
+class FolderScan {
+  FolderScan(this.games, this.skipped);
+
+  /// path -> system, for every playable file found.
+  final Map<String, Console> games;
+  final int skipped;
+}
+
+/// Decides which files in a folder tree are games, without asking the user.
+/// Cue-sheet tracks are hidden behind their sheet; ambiguous files (.bin,
+/// .img) are assigned by folder name; archives are skipped (they must be
+/// unpacked with Add ROMs).
+FolderScan classifyFolderPaths(Iterable<String> paths) {
+  final byDir = <String, List<String>>{};
+  for (final path in paths) {
+    byDir.putIfAbsent(p.dirname(path), () => []).add(path);
+  }
+  final games = <String, Console>{};
+  var skipped = 0;
+  for (final files in byDir.values) {
+    String ext(String f) => p.extension(f).replaceFirst('.', '').toLowerCase();
+    final hasSheet = files.any((f) => const {'cue', 'ccd', 'm3u'}.contains(ext(f)));
+    for (final f in files) {
+      final e = ext(f);
+      if (p.basename(f).startsWith('.')) continue; // macOS "._" files etc.
+      if (biosPattern.hasMatch(p.basename(f))) continue;
+      if (hasSheet && Console.companions.contains(e)) continue;
+      final known = Console.fromExtension(e);
+      if (known != null) {
+        games[f] = known;
+      } else if (e == 'bin' || e == 'img') {
+        final hinted = consoleFromFolderName(f);
+        if (hinted != null && !hinted.external) {
+          games[f] = hinted;
+        } else {
+          skipped++;
+        }
+      } else if (e == 'zip' || e == '7z') {
+        skipped++;
+      }
+    }
+  }
+  return FolderScan(games, skipped);
 }

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/console.dart';
+import '../services/library.dart';
 import '../services/switch_support.dart';
+import 'library_screen.dart' show askFolderPath;
 
-/// Settings. Today it holds the Nintendo Switch emulator choice; the
-/// structure leaves room for core options, controls and so on.
+/// Settings: game folders and the Nintendo Switch emulator.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -14,6 +15,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _sw = SwitchSupport.instance;
+  final _library = GameLibrary.instance;
+  List<String> _folders = const [];
   EmulatorChoice? _current;
   List<EmulatorChoice> _found = const [];
   bool _scanning = true;
@@ -25,6 +28,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _scan();
+    _loadFolders();
+  }
+
+  Future<void> _loadFolders() async {
+    final f = await _library.folders();
+    if (mounted) setState(() => _folders = f);
+  }
+
+  Future<void> _addFolder() async {
+    final r = await _library.addFolder(askPath: () => askFolderPath(context));
+    if (!mounted) return;
+    if (r.error != null) {
+      _snack(r.error!);
+    } else if (r.folder != null) {
+      _changed = true;
+      _snack('${r.folder}: ${r.found == 1 ? '1 game' : '${r.found} games'}');
+      await _loadFolders();
+    }
+  }
+
+  Future<void> _removeFolder(String path) async {
+    await _library.removeFolder(path);
+    _changed = true;
+    await _loadFolders();
   }
 
   Future<void> _scan() async {
@@ -98,6 +125,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
+            if (_library.supportsFolders) ...[
+              Text('Game folders', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                _library.foldersAreLinked
+                    ? 'Games in these folders (and their subfolders) appear in the library and stay where they '
+                        'are. RomRunner rescans them each time the library opens. Put ambiguous .bin files in a '
+                        'folder named after their system, such as "Genesis" or "PS1".'
+                    : 'In the browser, picking a folder imports its games for this session only.',
+                style: muted,
+              ),
+              const SizedBox(height: 8),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    for (final f in _folders)
+                      ListTile(
+                        leading: const Icon(Icons.folder_outlined),
+                        title: Text(f, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        trailing: IconButton(
+                          tooltip: 'Remove folder',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => _removeFolder(f),
+                        ),
+                      ),
+                    if (_folders.isEmpty && _library.foldersAreLinked)
+                      const ListTile(leading: Icon(Icons.folder_off_outlined), title: Text('No folders yet')),
+                    OverflowBar(
+                      alignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: _addFolder,
+                          icon: const Icon(Icons.create_new_folder_outlined),
+                          label: const Text('Add folder'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+            ],
             Row(children: [
               Container(
                 width: 10,

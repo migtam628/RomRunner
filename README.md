@@ -13,7 +13,9 @@ A ROM emulator front end for **Android, Fire TV, iOS, macOS, Windows, Linux and 
 
 | Nintendo Switch | .nsp .xci .nro | *Your installed Switch emulator* (see below) |
 
-`.zip` files are unpacked on import. Lone `.bin` files ask which system they belong to.
+`.zip` files are unpacked on import.
+
+**Game folders.** Instead of importing, you can point RomRunner at folders (**Add folder** in the library, or **Settings → Game folders**). Games stay where they are, subfolders included, and the folders are rescanned each time the library opens. Ambiguous `.bin` files are assigned by folder name (`Genesis/`, `Mega Drive/`, `PS1/`, `PSX/` …). A cue sheet's tracks are kept with it, and hidden folders are ignored. Android asks once for "All files access". On Fire TV models without a folder picker you can type the path instead. In the browser, picking a folder is a one-time import for that tab. iOS doesn't let apps keep access to folders, so it uses Add ROMs. Lone `.bin` files ask which system they belong to.
 
 ## How it fits together
 

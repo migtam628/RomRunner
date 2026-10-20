@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/console.dart';
@@ -34,6 +36,12 @@ class NativeLibrary implements GameLibrary {
       }
     }
     games.addAll(await SwitchSupport.instance.linkedGames());
+    final seen = {for (final g in games) g.path};
+    for (final folder in await folders()) {
+      for (final g in await _scanFolder(folder)) {
+        if (seen.add(g.path)) games.add(g);
+      }
+    }
     games.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return games;
   }
@@ -104,6 +112,7 @@ class NativeLibrary implements GameLibrary {
 
   @override
   Future<void> remove(Game game) async {
+    if (game.folder != null) return; // lives in a linked folder; never delete the user's file
     if (game.console.external) return SwitchSupport.instance.forget(game); // never delete the user's file
     final path = game.path;
     if (path == null) return;
@@ -114,6 +123,92 @@ class NativeLibrary implements GameLibrary {
       final other = p.basenameWithoutExtension(f.path);
       if (other == base || other.startsWith('$base (Track')) f.deleteSync();
     }
+  }
+
+  // ---- linked folders: <app support>/folders.json ----
+
+  static const _storage = MethodChannel('romrunner/storage');
+
+  @override
+  bool get supportsFolders => !Platform.isIOS;
+
+  @override
+  bool get foldersAreLinked => true;
+
+  Future<File> _foldersFile() async => File(p.join((await AppPaths.get()).root, 'folders.json'));
+
+  @override
+  Future<List<String>> folders() async {
+    try {
+      final f = await _foldersFile();
+      if (!f.existsSync()) return [];
+      final list = (jsonDecode(await f.readAsString()) as Map)['folders'] as List;
+      return list.whereType<String>().toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveFolders(List<String> list) async =>
+      (await _foldersFile()).writeAsString(jsonEncode({'folders': list}));
+
+  @override
+  Future<void> removeFolder(String path) async => _saveFolders((await folders())..remove(path));
+
+  /// Android 11+: reading game files in place needs "All files access";
+  /// older Android needs the storage permission.
+  Future<String?> _ensureAndroidAccess() async {
+    if (!Platform.isAndroid) return null;
+    if (await _storage.invokeMethod<bool>('hasAccess') == true) return null;
+    final granted = await _storage.invokeMethod<bool>('requestAccess') ?? false;
+    return granted ? null : 'RomRunner needs "All files access" to read games from a folder.';
+  }
+
+  @override
+  Future<FolderResult> addFolder({required Future<String?> Function() askPath}) async {
+    final denied = await _ensureAndroidAccess();
+    if (denied != null) return FolderResult(error: denied);
+    String? path;
+    try {
+      path = await FilePicker.getDirectoryPath(dialogTitle: 'Choose a folder of games');
+    } catch (_) {
+      // No folder picker on this device (common on Fire TV): ask for a path.
+      path = await askPath();
+    }
+    if (path == null || path.isEmpty) return const FolderResult();
+    if (!Directory(path).existsSync()) return FolderResult(error: 'Can\'t open $path');
+    final scan = await _scanPaths(path);
+    final list = await folders();
+    if (!list.contains(path)) await _saveFolders([...list, path]);
+    return FolderResult(folder: path, found: scan.games.length, skipped: scan.skipped);
+  }
+
+  static const _maxFiles = 50000;
+
+  Future<FolderScan> _scanPaths(String root) async {
+    final paths = <String>[];
+    try {
+      await for (final e in Directory(root).list(recursive: true, followLinks: false).handleError((_) {})) {
+        if (e is! File) continue;
+        // Skip hidden folders like .Trash or .git.
+        final rel = p.relative(e.path, from: root);
+        if (p.split(rel).any((s) => s.startsWith('.'))) continue;
+        paths.add(e.path);
+        if (paths.length >= _maxFiles) break;
+      }
+    } catch (_) {
+      // Folder vanished or became unreadable; show what we got.
+    }
+    return classifyFolderPaths(paths);
+  }
+
+  Future<List<Game>> _scanFolder(String root) async {
+    if (!Directory(root).existsSync()) return [];
+    final scan = await _scanPaths(root);
+    return [
+      for (final MapEntry(key: path, value: console) in scan.games.entries)
+        Game(title: Game.titleFromFile(p.basename(path)), console: console, fileName: p.basename(path), path: path, folder: root),
+    ];
   }
 
   @override

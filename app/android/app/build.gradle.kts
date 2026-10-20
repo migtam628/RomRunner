@@ -71,3 +71,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider, used to share Switch games found in game folders.
+    implementation("androidx.core:core-ktx:1.13.1")
+}

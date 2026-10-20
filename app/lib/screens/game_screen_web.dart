@@ -32,11 +32,7 @@ class _GameScreenState extends State<GameScreen> {
     final blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: 'application/octet-stream'));
     _blobUrl = web.URL.createObjectURL(blob);
 
-    final html = _page(
-      core: widget.game.console.ejsCore,
-      url: _blobUrl!,
-      name: widget.game.fileName,
-    );
+    final html = _page(core: widget.game.console.ejsCore, url: _blobUrl!, name: widget.game.fileName);
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int _) {
       final frame = web.HTMLIFrameElement()
         ..allow = 'gamepad; autoplay; fullscreen'
@@ -50,7 +46,8 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// The srcdoc iframe shares this page's origin, so it can read the blob URL.
-  String _page({required String core, required String url, required String name}) => '''
+  String _page({required String core, required String url, required String name}) =>
+      '''
 <!doctype html>
 <html><head><meta charset="utf-8">
 <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#game{width:100%;height:100%}</style>
@@ -77,16 +74,22 @@ class _GameScreenState extends State<GameScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      // expand: without it the Stack sizes to the back button and the game
+      // iframe ends up 56x56.
       body: Stack(
+        fit: StackFit.expand,
         children: [
           Positioned.fill(child: HtmlElementView(viewType: _viewType)),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: IconButton.filledTonal(
-                tooltip: 'Back to library',
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => Navigator.of(context).pop(),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: IconButton.filledTonal(
+                  tooltip: 'Back to library',
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
             ),
           ),

@@ -252,7 +252,10 @@ class _EmptyState extends StatelessWidget {
           children: [
             Wrap(
               spacing: 8,
-              children: [for (final c in Console.values) _Dot(color: c.color, size: 14)],
+              children: [
+                for (final c in Console.values)
+                  if (!c.external || SwitchSupport.instance.supported) _Dot(color: c.color, size: 14),
+              ],
             ),
             const SizedBox(height: 20),
             Text('Your library is empty', style: theme.textTheme.headlineSmall),

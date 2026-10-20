@@ -233,7 +233,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               icon: _importing
                   ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.add_rounded),
-              label: const Text('Add ROMs'),
+              label: Text(MediaQuery.sizeOf(context).width < 480 ? 'Add' : 'Add ROMs'),
             ),
           ),
         ],
@@ -329,7 +329,7 @@ class _EmptyState extends StatelessWidget {
                   autofocus: true,
                   onPressed: onImport,
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add ROMs'),
+                  label: Text(MediaQuery.sizeOf(context).width < 480 ? 'Add' : 'Add ROMs'),
                 ),
                 if (onAddFolder != null)
                   OutlinedButton.icon(

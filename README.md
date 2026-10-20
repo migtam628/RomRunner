@@ -98,7 +98,13 @@ Shared extensions like `.iso` and `.bin` are recognised by looking inside the di
 
 - **Pause menu:** Esc, the gamepad Guide button, the TV Back button, or the ⏸ button. It has 4 save-state slots, fast-forward (4×), reset and quit. On web, EmulatorJS has its own menu and save states, and in-game saves stay in the browser.
 - **Battery saves** (`.srm`) are written about every 10 seconds and when you quit.
-- **Touch controls** appear on phones and tablets, with a layout per system. They hide once a controller or keyboard is used; the pause menu brings them back.
+- **Touch controls** appear on phones and tablets, with a layout per system. They hide once a controller or keyboard is used; the pause menu brings them back. The game runs full screen; swipe from the edge for the system bars.
+- **Edit controls & screen** (pause menu) lets you lay things out your way. RomRunner saves the layout per system, with separate layouts for portrait and landscape:
+  - Drag any button, the D-pad, or the game screen itself to move it. Pinch, or use the size slider, to resize it.
+  - Hide buttons you don't need, and bring them back from the same screen.
+  - Choose how the picture fills its space: **Fit**, **Pixel** (whole-number scaling for sharp pixels), or **Stretch**. You can also turn on smoothing.
+  - **Settings** in the editor: opacity, overall button size, classic button colours (Super Famicom / PlayStation), and vibration.
+  - **Reset** puts one item or the whole layout back to the default.
 
 ### Controls
 
@@ -156,6 +162,7 @@ Inside:
 - `covers/`: downloaded cover art (safe to delete; it's fetched again).
 - `folders.json`: linked folders.
 - `cover_art.json`: the cover art on/off setting.
+- `controls.json`: your touch layouts.
 - `externals.json`: the chosen emulator per system, and linked games. The ⓘ button in the app shows the exact paths.
 
 ---

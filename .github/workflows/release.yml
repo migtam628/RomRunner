@@ -87,7 +87,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build apk --release \
+          flutter build apk --release --no-tree-shake-icons \
             --build-name=${{ needs.version.outputs.build }} \
             --build-number=${{ needs.version.outputs.number }}
           mkdir -p ../dist
@@ -119,7 +119,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build linux --release \
+          flutter build linux --release --no-tree-shake-icons \
             --build-name=${{ needs.version.outputs.build }} \
             --build-number=${{ needs.version.outputs.number }}
       - name: Bundle cores and package
@@ -150,7 +150,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build windows --release --build-name=${{ needs.version.outputs.build }} --build-number=${{ needs.version.outputs.number }}
+          flutter build windows --release --no-tree-shake-icons --build-name=${{ needs.version.outputs.build }} --build-number=${{ needs.version.outputs.number }}
       - name: Bundle cores and package
         shell: bash
         run: |
@@ -181,7 +181,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build macos --release \
+          flutter build macos --release --no-tree-shake-icons \
             --build-name=${{ needs.version.outputs.build }} \
             --build-number=${{ needs.version.outputs.number }}
       - name: Package
@@ -214,7 +214,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build ios --release --no-codesign \
+          flutter build ios --release --no-tree-shake-icons --no-codesign \
             --build-name=${{ needs.version.outputs.build }} \
             --build-number=${{ needs.version.outputs.number }}
       - name: Package unsigned IPA
@@ -245,7 +245,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build web --release \
+          flutter build web --release --no-tree-shake-icons \
             --build-name=${{ needs.version.outputs.build }} \
             --build-number=${{ needs.version.outputs.number }}
       - name: Package

@@ -8,9 +8,12 @@ import 'package:romrunner_core/romrunner_core.dart';
 
 import '../input/key_mapping.dart';
 import '../models/console.dart';
+import '../models/control_layout.dart';
 import '../models/game.dart';
+import '../services/control_store.dart';
 import '../services/core_manager.dart';
 import '../services/paths.dart';
+import '../widgets/layout_editor.dart';
 import '../widgets/pause_menu.dart';
 import '../widgets/touch_controller.dart';
 
@@ -40,8 +43,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   int _keyMask = 0;
   int _touchMask = 0;
-  bool _touchVisible = Platform.isAndroid || Platform.isIOS;
+  // ROMRUNNER_TOUCH=1 shows the touch pad on desktop (for trying layouts).
+  static final _touchDevice =
+      Platform.isAndroid || Platform.isIOS || Platform.environment['ROMRUNNER_TOUCH'] == '1';
+  bool _touchVisible = _touchDevice;
   int _slot = 1;
+
+  final _mobile = _touchDevice;
+  ControlLayout _portrait = ControlLayout();
+  ControlLayout _landscape = ControlLayout();
+  bool _editing = false;
+  String? _selected;
 
   Console get _console => widget.game.console;
 
@@ -49,6 +61,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Full screen while playing: the status and navigation bars come back
+    // with a swipe from the edge.
+    if (Platform.isAndroid || Platform.isIOS) SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _loadLayouts();
     _boot();
   }
 
@@ -89,6 +105,38 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _loadLayouts() async {
+    final store = ControlStore.instance;
+    final p = await store.load(_console, true);
+    final l = await store.load(_console, false);
+    if (mounted) {
+      setState(() {
+        _portrait = p;
+        _landscape = l;
+      });
+    }
+  }
+
+  void _startEditing() {
+    _core.paused = true;
+    setState(() {
+      _editing = true;
+      _touchVisible = true;
+      _selected = null;
+    });
+  }
+
+  Future<void> _stopEditing() async {
+    setState(() {
+      _editing = false;
+      _selected = null;
+    });
+    await ControlStore.instance.save(_console, true, _portrait);
+    await ControlStore.instance.save(_console, false, _landscape);
+    _core.paused = false;
+    _focus.requestFocus();
+  }
+
   void _onTick(Duration _) {
     if (_decoding || !_running) return;
     final frame = _core.copyFrame(_counter);
@@ -114,6 +162,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void _pushInput() => _core.setButtons(_keyMask | _touchMask);
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (_editing) return KeyEventResult.handled;
     final key = event.logicalKey;
     final action = actionKeys[key];
     if (action != null) {
@@ -161,7 +210,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         slot: _slot,
         fastForward: _fastForward,
         touchVisible: _touchVisible,
-        showTouchToggle: Platform.isAndroid || Platform.isIOS,
+        showTouchToggle: _mobile,
       ),
     );
     _menuOpen = false;
@@ -183,6 +232,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           _setFastForward(!_fastForward);
         case PauseAction.toggleTouch:
           setState(() => _touchVisible = !_touchVisible);
+        case PauseAction.editControls:
+          _startEditing();
+          return; // stays paused until Done
         case PauseAction.quit:
           _quit();
           return;
@@ -231,6 +283,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _shutdown();
+    if (Platform.isAndroid || Platform.isIOS) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _image?.dispose();
     _focus.dispose();
     super.dispose();
@@ -238,12 +291,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_running) {
+        if (_editing) {
+          _stopEditing();
+        } else if (_running) {
           _openMenu();
         } else {
           _quit();
@@ -257,79 +311,47 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           onKeyEvent: _onKey,
           child: Stack(
             children: [
-              Positioned.fill(
-                child: SafeArea(
-                  child: Align(
-                    alignment: portrait && _touchVisible ? Alignment.topCenter : Alignment.center,
-                    child: AspectRatio(
-                      aspectRatio: _aspect,
-                      child: CustomPaint(painter: _FramePainter(_image)),
-                    ),
-                  ),
-                ),
-              ),
-              if (_touchVisible && _running)
-                Positioned.fill(
-                  child: SafeArea(
-                    child: TouchController(
-                      console: _console,
-                      onChanged: (mask) {
-                        _touchMask = mask;
-                        _pushInput();
-                      },
-                    ),
-                  ),
-                ),
-              // DS touchscreen: taps and drags on the game image become pointer
-              // input. Sits above the touch pad and covers only the frame.
-              if (_running && _console.touchscreen)
-                Positioned.fill(
-                  child: SafeArea(
-                    child: Align(
-                      alignment: portrait && _touchVisible ? Alignment.topCenter : Alignment.center,
-                      child: AspectRatio(
-                        aspectRatio: _aspect,
-                        child: LayoutBuilder(
-                          builder: (context, box) {
-                            void send(Offset pos, bool down) => _core.setPointer(
-                                (pos.dx / box.maxWidth).clamp(0.0, 1.0), (pos.dy / box.maxHeight).clamp(0.0, 1.0), down);
-                            return Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (e) => send(e.localPosition, true),
-                              onPointerMove: (e) => send(e.localPosition, true),
-                              onPointerUp: (e) => send(e.localPosition, false),
-                              onPointerCancel: (e) => send(e.localPosition, false),
-                              child: const SizedBox.expand(),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              if (_running)
+              Positioned.fill(child: SafeArea(child: LayoutBuilder(builder: (context, box) => _play(box.biggest)))),
+              if (_running && (!_touchVisible || _layout(MediaQuery.sizeOf(context)).hiddenOf(menuId)) && !_editing)
                 SafeArea(
                   child: Align(
                     alignment: Alignment.topRight,
                     child: Padding(
                       padding: const EdgeInsets.all(8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_fastForward)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 8),
-                              child: Chip(label: Text('⏩ 4×'), visualDensity: VisualDensity.compact),
-                            ),
-                          IconButton.filledTonal(
-                            tooltip: 'Menu',
-                            icon: const Icon(Icons.pause_rounded),
-                            onPressed: _openMenu,
-                          ),
-                        ],
+                      child: IconButton.filledTonal(
+                        tooltip: 'Menu',
+                        icon: const Icon(Icons.pause_rounded),
+                        onPressed: _openMenu,
                       ),
                     ),
                   ),
+                ),
+              if (_running && _fastForward && !_editing)
+                const SafeArea(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Chip(label: Text('⏩ 4×'), visualDensity: VisualDensity.compact),
+                    ),
+                  ),
+                ),
+              if (_editing)
+                LayoutEditorBar(
+                  console: _console,
+                  layout: _layout(MediaQuery.sizeOf(context)),
+                  selected: _selected,
+                  onChanged: () => setState(() {}),
+                  onResetAll: () => setState(() {
+                    final fresh = ControlLayout();
+                    if (MediaQuery.sizeOf(context).height > MediaQuery.sizeOf(context).width) {
+                      _portrait = fresh;
+                    } else {
+                      _landscape = fresh;
+                    }
+                    _selected = null;
+                  }),
+                  onDone: _stopEditing,
                 ),
               if (!_running && _error == null) _LoadingOverlay(console: _console, progress: _downloadProgress),
               if (_error != null) _ErrorOverlay(message: _error!, onBack: _quit),
@@ -339,12 +361,97 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       ),
     );
   }
+
+  ControlLayout _layout(Size area) => area.height > area.width ? _portrait : _landscape;
+
+  /// The game picture, the DS touch layer and the touch pad, all placed in
+  /// the same [area] so the editor's coordinates line up.
+  Widget _play(Size area) {
+    final layout = _layout(area);
+    final portrait = area.height > area.width;
+    final pad = _touchVisible && _running && _mobile || _editing;
+    final rect = layout.screenRect(area, _aspect, _image?.height ?? 0, centered: !pad);
+    return Stack(
+      children: [
+        // Behind the pad: a soft gradient (below the picture in portrait,
+        // at the sides in landscape).
+        if (pad)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: portrait
+                    ? LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black, Color.lerp(const Color(0xFF14161C), _console.color, 0.06)!],
+                      )
+                    : RadialGradient(
+                        radius: 1.2,
+                        colors: [Colors.black, Color.lerp(const Color(0xFF14161C), _console.color, 0.06)!],
+                      ),
+              ),
+            ),
+          ),
+        Positioned.fromRect(
+          rect: rect,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              boxShadow: pad
+                  ? [BoxShadow(color: _console.color.withValues(alpha: 0.18), blurRadius: 24, spreadRadius: 1)]
+                  : null,
+            ),
+            child: ColoredBox(
+              color: Colors.black,
+              child: CustomPaint(painter: _FramePainter(_image, smooth: layout.smooth)),
+            ),
+          ),
+        ),
+        if (_touchVisible && _running && _mobile || _editing)
+          Positioned.fill(
+            child: TouchController(
+              console: _console,
+              layout: layout,
+              screenRect: rect,
+              fastForward: _fastForward,
+              onChanged: (mask) {
+                _touchMask = mask;
+                _pushInput();
+              },
+              onMenu: _openMenu,
+              onFastForward: () => _setFastForward(!_fastForward),
+              editing: _editing,
+              selected: _selected,
+              onSelect: (id) => setState(() => _selected = id),
+              onEdited: () => setState(() {}),
+            ),
+          ),
+        // DS touchscreen: taps and drags on the game image become pointer
+        // input. Sits above the touch pad and covers only the frame.
+        if (_running && _console.touchscreen && !_editing)
+          Positioned.fromRect(
+            rect: rect,
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (e) => _sendPointer(e.localPosition, rect.size, true),
+              onPointerMove: (e) => _sendPointer(e.localPosition, rect.size, true),
+              onPointerUp: (e) => _sendPointer(e.localPosition, rect.size, false),
+              onPointerCancel: (e) => _sendPointer(e.localPosition, rect.size, false),
+              child: const SizedBox.expand(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _sendPointer(Offset pos, Size size, bool down) =>
+      _core.setPointer((pos.dx / size.width).clamp(0.0, 1.0), (pos.dy / size.height).clamp(0.0, 1.0), down);
 }
 
 /// Draws the emulator frame with nearest-neighbour scaling (crisp pixels).
 class _FramePainter extends CustomPainter {
-  _FramePainter(this.image);
+  _FramePainter(this.image, {this.smooth = false});
   final ui.Image? image;
+  final bool smooth;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -354,12 +461,12 @@ class _FramePainter extends CustomPainter {
       img,
       Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
       Offset.zero & size,
-      Paint()..filterQuality = FilterQuality.none,
+      Paint()..filterQuality = smooth ? FilterQuality.medium : FilterQuality.none,
     );
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => old.image != image;
+  bool shouldRepaint(_FramePainter old) => old.image != image || old.smooth != smooth;
 }
 
 class _LoadingOverlay extends StatelessWidget {

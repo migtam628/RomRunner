@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/console.dart';
 
-enum PauseAction { resume, saveState, loadState, reset, toggleFastForward, toggleTouch, quit }
+enum PauseAction { resume, saveState, loadState, reset, toggleFastForward, toggleTouch, editControls, quit }
 
 class PauseResult {
   const PauseResult(this.action, this.slot);
@@ -96,8 +96,9 @@ class _PauseMenuState extends State<PauseMenu> {
               item(Icons.fast_forward_rounded, widget.fastForward ? 'Fast-forward: on' : 'Fast-forward: off',
                   PauseAction.toggleFastForward),
               if (widget.showTouchToggle)
-                item(Icons.gamepad_rounded, widget.touchVisible ? 'Hide touch controls' : 'Show touch controls',
+                item(Icons.videogame_asset_rounded, widget.touchVisible ? 'Hide touch controls' : 'Show touch controls',
                     PauseAction.toggleTouch),
+              if (widget.showTouchToggle) item(Icons.dashboard_customize_rounded, 'Edit controls & screen', PauseAction.editControls),
               item(Icons.replay_rounded, 'Reset game', PauseAction.reset),
               item(Icons.logout_rounded, 'Quit to library', PauseAction.quit),
             ],

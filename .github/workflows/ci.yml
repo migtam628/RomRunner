@@ -60,10 +60,11 @@ jobs:
     # in-app installer keeps working. Informational: upstream sites change.
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        emulator: [pcsx2, rpcs3, xemu, xenia, cemu, azahar, simple64, rmg, vita3k, ppsspp, dolphin, eden, ryujinx, armsx2]
+        emulator: [pcsx2, rpcs3, xemu, xenia, cemu, azahar, simple64, rmg, vita3k, ppsspp, eden, ryujinx, armsx2]
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2

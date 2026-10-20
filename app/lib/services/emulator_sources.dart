@@ -10,6 +10,12 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+const _timeout = Duration(seconds: 25);
+
+/// GET with a timeout, so a slow release server can't hang the installer.
+Future<http.Response> _get(http.Client client, Uri url, {Map<String, String>? headers}) =>
+    client.get(url, headers: headers).timeout(_timeout);
+
 enum Os { windows, macos, linux, android }
 
 enum Arch { x64, arm64 }
@@ -45,7 +51,7 @@ class GitHubReleases extends Source {
 
   @override
   Future<List<ReleaseAsset>> assets(http.Client client) async {
-    final res = await client.get(
+    final res = await _get(client, 
       Uri.parse('https://api.github.com/repos/$repo/releases${latestOnly ? '/latest' : '?per_page=8'}'),
       headers: {
         'Accept': 'application/vnd.github+json',
@@ -76,7 +82,7 @@ class ForgejoReleases extends Source {
 
   @override
   Future<List<ReleaseAsset>> assets(http.Client client) async {
-    final res = await client.get(Uri.parse('https://$host/api/v1/repos/$repo/releases?limit=8'),
+    final res = await _get(client, Uri.parse('https://$host/api/v1/repos/$repo/releases?limit=8'),
         headers: {'User-Agent': 'RomRunner'});
     if (res.statusCode != 200) throw StateError('$host $repo: HTTP ${res.statusCode}');
     return [
@@ -98,7 +104,7 @@ class GitLabReleases extends Source {
   @override
   Future<List<ReleaseAsset>> assets(http.Client client) async {
     final id = Uri.encodeComponent(project);
-    final res = await client.get(Uri.parse('https://$host/api/v4/projects/$id/releases?per_page=8'),
+    final res = await _get(client, Uri.parse('https://$host/api/v4/projects/$id/releases?per_page=8'),
         headers: {'User-Agent': 'RomRunner'});
     if (res.statusCode != 200) throw StateError('$host $project: HTTP ${res.statusCode}');
     return [
@@ -119,7 +125,7 @@ class PageLinks extends Source {
 
   @override
   Future<List<ReleaseAsset>> assets(http.Client client) async {
-    final res = await client.get(Uri.parse(page), headers: {
+    final res = await _get(client, Uri.parse(page), headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
           'Chrome/130.0 Safari/537.36 RomRunner',
       'Accept': 'text/html',
@@ -284,11 +290,8 @@ const Map<String, EmulatorSource> emulatorSources = {
     Os.macos: PageLinks('https://www.ppsspp.org/download/', r'[^"\s]*/files/[^"\s]*\.dmg'),
     Os.android: PageLinks('https://www.ppsspp.org/download/', r'[^"\s]*/files/[^"\s]*\.apk'),
   }, homepage: 'https://www.ppsspp.org'),
-  'dolphin': EmulatorSource({
-    Os.windows: PageLinks('https://dolphin-emu.org/download/', r'https://dl\.dolphin-emu\.org/releases/[^"\s]+-x64\.7z'),
-    Os.macos: PageLinks('https://dolphin-emu.org/download/', r'https://dl\.dolphin-emu\.org/releases/[^"\s]+-universal\.dmg'),
-    Os.android: PageLinks('https://dolphin-emu.org/download/', r'https://dl\.dolphin-emu\.org/releases/[^"\s]+\.apk'),
-  }, include: {Os.windows: r'x64', Os.macos: r'universal'}, homepage: 'https://dolphin-emu.org'),
+  // Dolphin isn't here: dolphin-emu.org blocks automated downloads and its
+  // GitHub has no binaries, so users install it themselves (it's detected).
   'eden': EmulatorSource({
     Os.windows: ForgejoReleases('git.eden-emu.dev', 'eden-emu/eden'),
     Os.linux: ForgejoReleases('git.eden-emu.dev', 'eden-emu/eden'),

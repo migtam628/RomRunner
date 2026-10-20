@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/migtam628/RomRunner/actions/workflows/ci.yml/badge.svg)](https://github.com/migtam628/RomRunner/actions/workflows/ci.yml)
 
-Play your own retro game ROMs on **Android, Fire TV, iOS, macOS, Windows, Linux and the web** from one app. RomRunner is a Flutter front end on top of [libretro](https://www.libretro.com/) emulation cores. It also keeps Nintendo Switch games in the same library and opens them in a Switch emulator you install separately.
+Play your own games on **Android, Fire TV, iOS, macOS, Windows, Linux and the web** from one library. RomRunner plays 17 systems itself through [libretro](https://www.libretro.com/) cores. For 11 more (PS2, PS3, Switch, GameCube/Wii, Xbox and others), it opens games in a dedicated emulator, and on desktop and Android it can download that emulator for you.
 
 ---
 
@@ -25,29 +25,58 @@ Every build comes from GitHub Actions; get it from **[Releases](https://github.c
 
 ## Systems
 
-| System | Files | Emulated by |
+### Played inside RomRunner
+
+| System | Files | Core |
 |---|---|---|
 | NES / Famicom Disk System | `.nes` `.unf` `.fds` | FCEUmm |
-| Game Boy / Game Boy Color | `.gb` `.gbc` | Gambatte |
+| Game Boy / Color | `.gb` `.gbc` | Gambatte |
 | Game Boy Advance | `.gba` | mGBA |
+| Nintendo DS | `.nds` (tap the touchscreen) | melonDS DS (melonDS on iOS) |
 | SNES | `.sfc` `.smc` | Snes9x |
-| Genesis / Mega Drive / Master System / Game Gear | `.md` `.gen` `.smd` `.sms` `.gg` (and `.bin`) | Genesis Plus GX |
+| Virtual Boy | `.vb` | Beetle VB |
+| Genesis / Mega Drive / Master System / Game Gear | `.md` `.gen` `.sms` `.gg` (and `.bin`) | Genesis Plus GX |
+| Sega CD | `.cue`/`.chd`/`.iso` (needs BIOS) | Genesis Plus GX |
+| Sega 32X | `.32x` | PicoDrive |
+| PC Engine / TurboGrafx-16 | `.pce` | Beetle PCE Fast |
+| Neo Geo Pocket / Color | `.ngp` `.ngc` | Beetle NeoPop |
+| WonderSwan / Color | `.ws` `.wsc` | Beetle Cygne |
+| Atari 2600 / 7800 / Lynx | `.a26` `.a78` `.lnx` (Lynx needs BIOS) | Stella / ProSystem / Handy |
+| Arcade | FinalBurn Neo `.zip` romsets | FBNeo |
 | PlayStation | `.cue`+`.bin` `.chd` `.pbp` `.m3u` | PCSX-ReARMed |
-| Nintendo Switch | `.nsp` `.xci` `.nro` | Your installed Switch emulator ([details](#nintendo-switch)) |
+
+### Opened in a dedicated emulator
+
+| System | Files | Emulators (RomRunner can install the ones in **bold**) |
+|---|---|---|
+| Nintendo 64 | `.z64` `.n64` `.v64` | **simple64** (Win), **RMG** (Win/Linux), Mupen64Plus, Project64, M64Plus FZ (Android) · built in on web |
+| PlayStation 2 | `.iso` `.chd` `.cso` `.zso` | **PCSX2** · Android: **ARMSX2**, NetherSX2, Play! |
+| PSP | `.iso` `.cso` `.pbp` | **PPSSPP** (Win/macOS/Android) |
+| GameCube / Wii | `.rvz` `.iso` `.gcz` `.wbfs` | Dolphin |
+| Wii U | `.wua` `.wud` `.wux` `.rpx` | **Cemu** |
+| 3DS | `.3ds` `.cci` `.cxi` `.3dsx` | **Azahar** |
+| Switch | `.nsp` `.xci` `.nro` | **Eden**, Citron, Ryujinx, Kenji-NX (Android) |
+| Xbox | `.iso` `.xiso` | **xemu** · Android: X1 BOX |
+| Xbox 360 | `.iso` `.xex` | **Xenia** (Win/Linux) · Android: aX360e |
+| PlayStation 3 | game folders, `.iso` | **RPCS3** · Android: aPS3e |
+| PS Vita | `.psvita` (installed in Vita3K) | **Vita3K** |
+
+Shared extensions like `.iso` and `.bin` are recognised by looking inside the disc: PS1, PS2, PSP, PS3, Sega CD, GameCube/Wii, Xbox and Xbox 360 discs are told apart automatically. A folder named after the system (`PS2/`, `Genesis/`…) also settles it.
 
 ### What works where
 
 | | Android | Fire TV | iOS | macOS | Windows | Linux | Web |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| NES · GB · GBA · SNES · Genesis | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| PS1 | ✓ | ✓ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ ² |
-| Switch (via installed emulator) | ✓ ³ | – | – | ✓ ⁴ | ✓ | ✓ | – |
+| Built-in systems | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ ¹ |
+| PS2 · PSP · GC/Wii · 3DS · Switch · N64 · Wii U · Vita | ✓ ² | some ³ | – | ✓ | ✓ | ✓ | N64 only |
+| Xbox · PS3 | ✓ ² | – | – | ✓ | ✓ | ✓ | – |
+| Xbox 360 | ✓ ² | – | – | – | ✓ | ✓ | – |
+| Download emulators automatically | ✓ (one tap to install) | ✓ | – | ✓ | ✓ | ✓ | – |
 | Game folders (linked) | ✓ | ✓ | – | ✓ | ✓ | ✓ | import only |
 | Touch controls | ✓ | – | ✓ | – | – | – | EmulatorJS |
 | Gamepads | ✓ | ✓ | – | – | – | – | ✓ |
-| TV remote | ✓ | ✓ | – | – | – | – | – |
 
-¹ Interpreter only (iOS forbids JIT), slower on older iPhones. ² Single-file `.chd` or `.pbp`. ³ Recent Snapdragon 8-series phones. ⁴ Ryujinx-based builds.
+¹ Through EmulatorJS; PS1 needs single-file `.chd`/`.pbp`. ² Through Android emulator apps, which need a fast phone (Snapdragon 8-series for Switch, PS3, Xbox 360). ³ Fire TV can run lighter emulators like PPSSPP. iOS can't open other apps with a file, so it plays only the built-in systems.
 
 ---
 
@@ -84,22 +113,25 @@ Every build comes from GitHub Actions; get it from **[Releases](https://github.c
 
 ---
 
-## Nintendo Switch
+## Systems with a dedicated emulator
 
-RomRunner doesn't emulate Switch itself. No libretro core exists, and the working emulators are large standalone apps. Instead, Switch games sit in the library like everything else and open fullscreen in a Switch emulator you install and set up separately, with keys and firmware dumped from your own console.
+The first time you play a game for one of these systems, RomRunner looks for an installed emulator. If it finds none, it offers to install one:
 
-| Platform | Emulators | How RomRunner finds it |
-|---|---|---|
-| Windows, Linux | Eden, Citron, Ryujinx / Ryubing | On `PATH`; Linux also checks for AppImages in `~`, `~/Downloads`, `~/Applications`. Or **Browse…** |
-| macOS | Ryujinx-based builds | In `/Applications` or `~/Applications`, or **Browse…** |
-| Android | Eden, Citron (Yuzu-family apps) | Installed apps that accept game files; or "Ask each time" |
-| iOS, Fire TV, web | – | Not possible (no JIT on iOS, not enough GPU on Fire TV, no browser support) |
+- **Windows, macOS, Linux:** downloads the latest official release from the project's own GitHub, Forgejo or GitLab releases, or its download page. It unpacks it into RomRunner's folder (`emulators/`), sets it up, and starts the game.
+- **Android / Fire TV:** downloads the official APK and opens Android's installer, so you tap **Install** once. The first time, Android asks you to allow RomRunner to install apps.
+- **iOS:** not possible.
 
-1. Install the emulator and get it running a game on its own first.
-2. In RomRunner, open **Settings → Nintendo Switch** and pick the emulator.
-3. Add games with **Add Switch games**, a **game folder**, or (desktop) **Add ROMs**.
+You can also pick or change the emulator in **Settings → Other systems**. That screen also finds emulators you installed yourself (PATH, `/Applications`, AppImages, Flatpaks, Android apps) and has **Browse…** on desktop.
 
-Switch games are **linked, never copied**, since they're often 5–20 GB. RomRunner launches Yuzu-family emulators with `-f -g <game>` and Ryujinx with `<game> --fullscreen`. On Android it sends the file to the emulator with a one-time read grant. Removing a Switch game from the library never deletes the file.
+RomRunner never downloads BIOS files, keys or firmware; those come from your own consoles. The emulator picker tells you what each system needs:
+
+- **PS2:** BIOS.
+- **Xbox:** MCPX ROM, BIOS and HDD image.
+- **Switch:** `prod.keys` and firmware.
+- **Wii U:** `keys.txt` for encrypted games.
+- **PS3 and Vita:** system software, which Sony offers free; the emulators walk you through installing it.
+
+Games for these systems are **linked, never copied**. The launch commands, executable names and Android intents come from [ES-DE](https://es-de.org)'s tested configurations; for example, PCSX2 gets `-batch -fullscreen`, Dolphin `-b -e`, RPCS3 `--no-gui` and Eden `-f -g`. Dolphin can't be downloaded automatically yet (its site blocks automated downloads), so install it yourself; RomRunner then finds it.
 
 ---
 
@@ -112,7 +144,16 @@ Switch games are **linked, never copied**, since they're often 5–20 GB. RomRun
 | Linux | `~/.local/share/com.mttech.romrunner/` |
 | Android, iOS | The app's private storage |
 
-Inside: `roms/` (imported games, one folder per system), `saves/` (battery saves), `states/` (save states), `system/` (BIOS), `cores/` (downloaded cores, desktop), `folders.json` (linked folders) and `switch.json` (Switch emulator and linked games). The ⓘ button in the app shows the exact paths.
+Inside:
+
+- `roms/`: imported games, one folder per system.
+- `saves/`: battery saves.
+- `states/`: save states.
+- `system/`: BIOS files.
+- `cores/`: downloaded cores (desktop).
+- `emulators/`: emulators RomRunner installed.
+- `folders.json`: linked folders.
+- `externals.json`: the chosen emulator per system, and linked games. The ⓘ button in the app shows the exact paths.
 
 ---
 
@@ -128,7 +169,11 @@ git tag v0.1.0 && git push origin v0.1.0
 
 - A tag with a dash, like `v0.2.0-beta.1`, is published as a pre-release.
 - **Dry run** (build everything, publish nothing): **Actions → Release → Run workflow**, or push any branch named `release-test/<anything>`. The builds can be downloaded from that run.
-- **CI** (`.github/workflows/ci.yml`) runs on every push and pull request. It runs `flutter analyze` and `flutter test`, compiles the C bridge with warnings as errors, and runs a headless check of the bridge against the Gambatte core with Blargg's `cpu_instrs` test ROM.
+- **CI** (`.github/workflows/ci.yml`) runs on every push and pull request:
+  - `flutter analyze` and `flutter test`.
+  - A warnings-as-errors compile of the C bridge.
+  - A headless run of the bridge against Gambatte with Blargg's `cpu_instrs` test ROM.
+  - One job per emulator that checks its official download still resolves for every platform (`app/tool/check_downloads.dart`).
 
 ### Android signing (one time)
 
@@ -174,11 +219,13 @@ The emulation loop and audio run natively, so a slow UI frame never stutters the
 .github/workflows/      ci.yml (checks), release.yml (all platforms → GitHub Release)
 app/                    Flutter app, with runners for all 7 platforms
   lib/models/           systems, games, RetroPad buttons
-  lib/services/         library (native/web), game folders, core download, Switch launcher, app folders
+  lib/services/         library (native/web), game folders, disc sniffing, core download,
+                        external emulator catalog + launcher, emulator download sources + installer
   lib/screens/          library, settings, game screen (native and web)
   lib/widgets/          touch controller, pause menu
   lib/input/            keyboard / gamepad / TV-remote bindings
-  android/…/MainActivity.kt   Switch handoff, storage access, file provider
+  android/…/MainActivity.kt   emulator intents, APK install, storage access, file provider
+  tool/check_downloads.dart   resolves every emulator download (run by CI)
   ios/embed_cores.sh    Xcode build phase that embeds and signs cores
 packages/romrunner_core/  FFI plugin: the C libretro host
   src/romrunner_core.c    the bridge (one file, rr_* API)
@@ -207,18 +254,23 @@ Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge
 ## Status
 
 **Tested:**
-- **Every push:** GitHub Actions builds all seven platforms.
-- **C bridge:** ran real cores headless for NES, GB (passes `cpu_instrs`), GBA, SNES, Genesis and PS1. Save states, 60 fps pacing, fast-forward, pause and core reload all work.
-- **Linux app, end to end:** library, playing a game, pause menu, game folders, and Switch launching (checked against a stand-in emulator that records its arguments).
+- **Every push:** GitHub Actions builds all seven platforms and checks every emulator download.
+- **C bridge:** ran real cores headless:
+  - NES, Game Boy (passes `cpu_instrs`), GBA, SNES, Genesis and PS1.
+  - DS (melonDS DS and DeSmuME), PC Engine, WonderSwan, Neo Geo Pocket, Virtual Boy, Atari 2600/7800 and 32X.
+- **Linux app, end to end:** library, playing, pause menu, game folders, disc sniffing, and launching N64, PS2, PSP, GameCube, Xbox 360 and PS3 (folder) games. The launches were checked against stand-in emulators that record their arguments.
+- **Installer:** unpacking zip, tar.xz and AppImage downloads and finding the emulator's executable are covered by tests.
 - **Web app in Chromium:** importing ROMs and folders, and full-window play.
 
-**Not yet tested on real hardware:** Android phones, Fire TV, iOS and Windows builds, audio output, and real Switch emulators with real games. On macOS, the app has been run and the file-picker issue it showed is fixed; nothing else has been checked there yet.
+**Not yet tested on real hardware:** Android, Fire TV, iOS and Windows builds; audio; real emulators with real games; and the full download-and-install flow on each OS. macOS was run once, and the file-picker issue it showed is fixed.
 
 ### Known limitations
 
 - **PS1 crashes:** in the Linux test VM, the PS1 core's fast (dynarec) mode crashed on homebrew `.exe` test programs, while its interpreter ran them fine. If PS1 games crash on a device, switch to the interpreter (one line in `game_screen_native.dart`, the same way iOS does).
 - **Desktop gamepads:** not supported yet on iOS, macOS, Windows or Linux. Android and Fire TV gamepads work.
-- **Zips in game folders:** these are skipped; unzip them with Add ROMs.
+- **Zips in game folders:** these are skipped, except arcade romsets in a folder named `Arcade`/`FBNeo`/`MAME`. Unzip other zips with Add ROMs.
+- **N64 inside RomRunner:** not possible yet, because the N64 cores need GPU rendering in the engine. N64 opens in an external emulator on native platforms and runs built in on the web.
+- **Dolphin:** has to be installed by hand (see above).
 - **macOS:** the app isn't notarized, and it ships without the App Sandbox so it can load downloaded cores.
 
 ### Roadmap
@@ -226,12 +278,13 @@ Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge
 1. Gamepads on iOS, macOS, Windows and Linux.
 2. Core options UI (region, palette, renderer); the bridge already supports `rr_set_option`.
 3. Box art from the libretro thumbnails repo, plus recent and favorite rows.
-4. Return to RomRunner automatically when the Switch emulator exits (desktop).
-5. Rewind, and CRT/LCD shaders.
-6. GPU texture upload instead of per-frame image decode (matters for high-res PS1).
+4. Return to RomRunner automatically when an external emulator exits (desktop).
+5. GPU rendering in the engine, to run N64, PSP and Dreamcast cores built in.
+6. Rewind, and CRT/LCD shaders.
+7. GPU texture upload instead of per-frame image decode (matters for high-res PS1).
 
 ---
 
 ## Legal
 
-RomRunner doesn't include or download any games, BIOS files, Switch keys or firmware. Use dumps of games and hardware you own. The libretro cores and EmulatorJS are GPL-licensed: personal and sideloaded use is fine, but publishing to an app store requires GPL compliance (source availability), and stores review emulators differently.
+RomRunner doesn't include or download any games, BIOS files, keys or firmware. The emulators it installs are open-source projects, downloaded from their own official releases. Use dumps of games and hardware you own. The libretro cores and EmulatorJS are GPL-licensed: personal and sideloaded use is fine, but publishing to an app store requires GPL compliance (source availability), and stores review emulators differently.

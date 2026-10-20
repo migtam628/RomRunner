@@ -41,7 +41,6 @@ dependencies:
   web: ^1.1.1
   romrunner_core:
     path: ../packages/romrunner_core
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

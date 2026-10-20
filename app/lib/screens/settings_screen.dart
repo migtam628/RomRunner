@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/console.dart';
+import '../services/cover_art.dart';
 import '../services/external_catalog.dart';
 import '../services/library.dart';
 import '../services/external_support.dart';
@@ -30,6 +31,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadChoices();
     _loadFolders();
+    CoverArt.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _loadFolders() async {
@@ -122,6 +126,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
+            Card(
+              margin: EdgeInsets.zero,
+              child: SwitchListTile(
+                secondary: const Icon(Icons.image_outlined),
+                title: const Text('Cover art'),
+                subtitle: const Text('Box art from the libretro thumbnails collection, matched by game name'),
+                value: CoverArt.instance.enabled,
+                onChanged: (on) async {
+                  await CoverArt.instance.setEnabled(on);
+                  _changed = true;
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(height: 28),
             if (_library.supportsFolders) ...[
               Text('Game folders', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),

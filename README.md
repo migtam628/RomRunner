@@ -91,6 +91,7 @@ Shared extensions like `.iso` and `.bin` are recognised by looking inside the di
   - **Android** asks once for *All files access*. **Fire TV** models without a folder picker let you type a path instead (e.g. `/storage/emulated/0/ROMs`).
   - **Web:** picking a folder imports its games into that browser tab for the session.
   - **iOS** doesn't let apps keep folder access between launches, so it uses Add ROMs.
+- **Cover art** appears on each game's card automatically, from the [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails) collection. Games are matched by name: No-Intro / Redump file names (`Super Metroid (Japan, USA).sfc`) match exactly, and looser names (`zelda links awakening.gb`) usually work too, with the USA release preferred. Covers are downloaded once and kept offline; games with no match show the system tile. Switch has no covers. Turn it off in **Settings → Cover art**.
 - **BIOS files** (optional) go in through Add ROMs like a game: `scph5501.bin`, `gba_bios.bin` and so on are recognised and installed into the BIOS folder automatically. PS1 runs without a BIOS, but compatibility is better with one.
 
 ## Playing
@@ -152,7 +153,9 @@ Inside:
 - `system/`: BIOS files.
 - `cores/`: downloaded cores (desktop).
 - `emulators/`: emulators RomRunner installed.
+- `covers/`: downloaded cover art (safe to delete; it's fetched again).
 - `folders.json`: linked folders.
+- `cover_art.json`: the cover art on/off setting.
 - `externals.json`: the chosen emulator per system, and linked games. The ⓘ button in the app shows the exact paths.
 
 ---

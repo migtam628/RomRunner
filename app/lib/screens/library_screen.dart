@@ -5,6 +5,8 @@ import '../input/key_mapping.dart';
 import '../models/console.dart';
 import '../models/game.dart';
 import '../services/library.dart';
+import '../services/cover_art.dart';
+import '../widgets/cover_image.dart';
 import '../services/external_support.dart';
 import '../widgets/install_dialog.dart';
 import 'game_screen.dart';
@@ -268,10 +270,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           maxCrossAxisExtent: 210,
                           mainAxisSpacing: 14,
                           crossAxisSpacing: 14,
-                          childAspectRatio: 0.82,
+                          childAspectRatio: 0.7,
                         ),
                         itemCount: visible.length,
                         itemBuilder: (context, i) => _GameCard(
+                          // Re-fetch art when the game or the cover setting changes.
+                          key: ValueKey('${visible[i].id}|${visible[i].path}|${CoverArt.instance.enabled}'),
                           game: visible[i],
                           autofocus: i == 0,
                           onPlay: () => _play(visible[i]),
@@ -375,7 +379,7 @@ class _Dot extends StatelessWidget {
 
 /// Focusable game tile; grows and outlines itself when focused (TV / keyboard).
 class _GameCard extends StatefulWidget {
-  const _GameCard({required this.game, required this.onPlay, required this.onRemove, this.autofocus = false});
+  const _GameCard({super.key, required this.game, required this.onPlay, required this.onRemove, this.autofocus = false});
   final Game game;
   final VoidCallback onPlay;
   final VoidCallback onRemove;
@@ -387,6 +391,64 @@ class _GameCard extends StatefulWidget {
 
 class _GameCardState extends State<_GameCard> {
   bool _focused = false;
+  Cover? _cover;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCover();
+  }
+
+  @override
+  void didUpdateWidget(_GameCard old) {
+    super.didUpdateWidget(old);
+    if (old.game.id != widget.game.id || old.game.path != widget.game.path) {
+      _cover = null;
+      _loadCover();
+    }
+  }
+
+  Future<void> _loadCover() async {
+    final game = widget.game;
+    try {
+      final cover = await CoverArt.instance.coverFor(game);
+      if (mounted && widget.game.id == game.id) setState(() => _cover = cover);
+    } catch (_) {
+      // No art; the colored tile stays.
+    }
+  }
+
+  Widget _art(Console c) {
+    final cover = _cover;
+    Widget fallback() => Center(
+          child: Text(
+            c.name.toUpperCase(),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 1),
+          ),
+        );
+    if (cover == null) return fallback();
+    final image = cover.filePath != null
+        ? Image(image: coverImageProvider(cover.filePath!), fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback())
+        : Image.network(cover.url!,
+            fit: BoxFit.cover,
+            // thumbnails.libretro.com has no CORS headers; an <img> element works anyway.
+            webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+            errorBuilder: (_, _, _) => fallback());
+    return Stack(fit: StackFit.expand, children: [
+      image,
+      Positioned(
+        left: 8,
+        bottom: 8,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: c.color, borderRadius: BorderRadius.circular(6)),
+          child: Text(c.name.toUpperCase(),
+              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+        ),
+      ),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -421,24 +483,15 @@ class _GameCardState extends State<_GameCard> {
                   ),
                   child: Stack(
                     children: [
-                      Center(
-                        child: Text(
-                          c.name.toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 22,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ),
+                      Positioned.fill(child: _art(c)),
                       Positioned(
                         top: 2,
                         right: 2,
                         child: IconButton(
                           tooltip: 'Remove',
                           iconSize: 18,
-                          color: Colors.white70,
+                          color: Colors.white,
+                          style: IconButton.styleFrom(backgroundColor: Colors.black38),
                           onPressed: widget.onRemove,
                           icon: const Icon(Icons.close_rounded),
                         ),

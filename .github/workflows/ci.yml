@@ -55,11 +55,15 @@ jobs:
           grep -q "frames produced" out.txt
 
   downloads:
-    name: Emulator downloads
+    name: Download ${{ matrix.emulator }}
     # Checks that every emulator's official download still resolves, so the
     # in-app installer keeps working. Informational: upstream sites change.
     runs-on: ubuntu-latest
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        emulator: [pcsx2, rpcs3, xemu, xenia, cemu, azahar, simple64, rmg, vita3k, ppsspp, dolphin, eden, ryujinx, armsx2]
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -73,4 +77,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           flutter pub get
-          dart run tool/check_downloads.dart --github
+          dart run tool/check_downloads.dart --github ${{ matrix.emulator }}

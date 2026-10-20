@@ -3,6 +3,7 @@
 //
 //   dart run tool/check_downloads.dart            # human-readable
 //   dart run tool/check_downloads.dart --github   # also ::notice/::warning annotations
+//   dart run tool/check_downloads.dart pcsx2 rpcs3  # only these emulators
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -10,11 +11,13 @@ import 'package:romrunner/services/emulator_sources.dart';
 
 Future<void> main(List<String> args) async {
   final annotate = args.contains('--github');
+  final only = args.where((a) => !a.startsWith('--')).toSet();
   GitHubReleases.token = Platform.environment['GITHUB_TOKEN'];
   final client = http.Client();
   var failures = 0;
   final cache = <Source, List<ReleaseAsset>>{};
   for (final MapEntry(key: id, value: src) in emulatorSources.entries) {
+    if (only.isNotEmpty && !only.contains(id)) continue;
     for (final MapEntry(key: os, value: source) in src.sources.entries) {
       for (final arch in os == Os.android ? [Arch.arm64] : (os == Os.windows ? [Arch.x64] : [Arch.x64, Arch.arm64])) {
         String line;

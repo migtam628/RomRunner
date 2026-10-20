@@ -33,16 +33,20 @@ sealed class Source {
 /// GitHub releases (newest first). [prerelease]: accept pre-releases,
 /// which some projects (PCSX2 nightly, Vita3K "continuous") use for all builds.
 class GitHubReleases extends Source {
-  const GitHubReleases(this.repo, {this.prerelease = true});
+  const GitHubReleases(this.repo, {this.prerelease = true, this.latestOnly = false});
   final String repo;
   final bool prerelease;
+
+  /// Use GitHub's "latest release" (for repos whose release list isn't
+  /// newest-first, e.g. RPCS3's binary repos).
+  final bool latestOnly;
 
   static String? token; // optional, for CI rate limits
 
   @override
   Future<List<ReleaseAsset>> assets(http.Client client) async {
     final res = await client.get(
-      Uri.parse('https://api.github.com/repos/$repo/releases?per_page=8'),
+      Uri.parse('https://api.github.com/repos/$repo/releases${latestOnly ? '/latest' : '?per_page=8'}'),
       headers: {
         'Accept': 'application/vnd.github+json',
         'User-Agent': 'RomRunner',
@@ -50,8 +54,10 @@ class GitHubReleases extends Source {
       },
     );
     if (res.statusCode != 200) throw StateError('GitHub $repo: HTTP ${res.statusCode}');
+    final body = jsonDecode(res.body);
+    final releases = latestOnly ? [body as Map<String, dynamic>] : (body as List).cast<Map<String, dynamic>>();
     final out = <ReleaseAsset>[];
-    for (final r in (jsonDecode(res.body) as List).cast<Map<String, dynamic>>()) {
+    for (final r in releases) {
       if (r['draft'] == true || (r['prerelease'] == true && !prerelease)) continue;
       for (final a in (r['assets'] as List).cast<Map<String, dynamic>>()) {
         out.add(ReleaseAsset(a['name'] as String, a['browser_download_url'] as String,
@@ -141,7 +147,7 @@ class EmulatorSource {
   final String homepage;
 }
 
-const _noise = r'(debug|symbols|pdb|dbg|source|src|\.sha\d*|\.sig|\.asc|\.md5|\.txt|\.json|\.zsync|-dev\b|test)';
+const _noise = r'(debug|symbols|\bpdb\b|\bdbg\b|source|\bsrc\b|\.sha\d*|\.sig$|\.asc$|\.md5$|\.txt$|\.json$|\.zsync$|-dev\b|\btests?\b|\.aab$|libretro)';
 
 /// Picks the best asset for [os]/[arch] from [assets] (newest releases
 /// first), or null.
@@ -232,9 +238,9 @@ const Map<String, EmulatorSource> emulatorSources = {
     homepage: 'https://pcsx2.net',
   ),
   'rpcs3': EmulatorSource({
-    Os.windows: GitHubReleases('RPCS3/rpcs3-binaries-win'),
-    Os.linux: GitHubReleases('RPCS3/rpcs3-binaries-linux'),
-    Os.macos: GitHubReleases('RPCS3/rpcs3-binaries-mac'),
+    Os.windows: GitHubReleases('RPCS3/rpcs3-binaries-win', latestOnly: true),
+    Os.linux: GitHubReleases('RPCS3/rpcs3-binaries-linux', latestOnly: true),
+    Os.macos: GitHubReleases('RPCS3/rpcs3-binaries-mac', latestOnly: true),
   }, homepage: 'https://rpcs3.net'),
   'xemu': EmulatorSource(
     {Os.windows: GitHubReleases('xemu-project/xemu'), Os.linux: GitHubReleases('xemu-project/xemu'), Os.macos: GitHubReleases('xemu-project/xemu')},
@@ -253,9 +259,9 @@ const Map<String, EmulatorSource> emulatorSources = {
     Os.linux: GitHubReleases('azahar-emu/azahar'),
     Os.macos: GitHubReleases('azahar-emu/azahar'),
     Os.android: GitHubReleases('azahar-emu/azahar'),
-  }, include: {Os.android: r'vanilla|azahar'}, homepage: 'https://azahar-emu.org'),
+  }, include: {Os.android: r'vanilla'}, homepage: 'https://azahar-emu.org'),
   'simple64': EmulatorSource(
-    {Os.windows: GitHubReleases('simple64/simple64'), Os.linux: GitHubReleases('simple64/simple64')},
+    {Os.windows: GitHubReleases('simple64/simple64')},
     homepage: 'https://simple64.github.io',
   ),
   'rmg': EmulatorSource(

@@ -41,6 +41,7 @@ class MainActivity : FlutterActivity() {
                 "switchHandlers" -> result.success(findSwitchHandlers())
                 "pickGames" -> pickGames(result)
                 "launch" -> launch(call, result)
+                "installApk" -> installApk(call.argument<String>("path")!!, result)
                 "release" -> {
                     release(call.argument<String>("uri")!!)
                     result.success(null)
@@ -237,6 +238,33 @@ class MainActivity : FlutterActivity() {
             result.error("not_found", "That emulator isn't installed anymore. Choose another in Settings.", null)
         } catch (e: SecurityException) {
             result.error("no_access", "RomRunner lost access to this file, or the emulator refused it. Remove the game and add it again.", null)
+        }
+    }
+
+    /**
+     * Opens Android's package installer for an emulator APK RomRunner
+     * downloaded from the emulator's official releases. The user confirms.
+     */
+    private fun installApk(path: String, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            // First time: the user has to allow RomRunner to install apps.
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            } catch (_: ActivityNotFoundException) {
+            }
+            result.error("needs_permission", "Allow RomRunner to install apps, then press Install again.", null)
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.games", java.io.File(path))
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(intent)
+            result.success(null)
+        } catch (e: ActivityNotFoundException) {
+            result.error("no_installer", "This device has no package installer.", null)
         }
     }
 

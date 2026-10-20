@@ -6,6 +6,7 @@ import '../models/console.dart';
 import '../models/game.dart';
 import '../services/library.dart';
 import '../services/external_support.dart';
+import '../widgets/install_dialog.dart';
 import 'game_screen.dart';
 import 'settings_screen.dart';
 
@@ -119,6 +120,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
         await ExternalSupport.instance.launch(game);
         _snack('Opening ${game.title}…');
       } on ExternalLaunchException catch (e) {
+        final emu = e.installable;
+        if (emu != null && mounted) {
+          final result = await showInstallDialog(context, emu, game.console);
+          if (result is EmulatorChoice) return _play(game); // installed: start the game
+          if (result == true) _snack('Tap Install in the Android installer, then open ${game.title} again.');
+          return;
+        }
         _snack(e.message,
             action: e.needsSetup ? SnackBarAction(label: 'Settings', onPressed: _openSettings) : null);
       }

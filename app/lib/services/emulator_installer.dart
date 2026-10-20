@@ -32,12 +32,12 @@ class EmulatorInstaller {
   Os? get _os => Platform.isWindows
       ? Os.windows
       : Platform.isMacOS
-          ? Os.macos
-          : Platform.isLinux
-              ? Os.linux
-              : Platform.isAndroid
-                  ? Os.android
-                  : null;
+      ? Os.macos
+      : Platform.isLinux
+      ? Os.linux
+      : Platform.isAndroid
+      ? Os.android
+      : null;
 
   Arch get _arch => const {Abi.macosArm64, Abi.linuxArm64, Abi.windowsArm64, Abi.androidArm64}.contains(Abi.current())
       ? Arch.arm64
@@ -68,7 +68,9 @@ class EmulatorInstaller {
     final os = _os;
     final src = emulatorSources[e.id];
     final source = src?.sources[os];
-    if (os == null || src == null || source == null) throw InstallException('${e.name} can\'t be installed automatically here.');
+    if (os == null || src == null || source == null) {
+      throw InstallException('${e.name} can\'t be installed automatically here.');
+    }
 
     onProgress?.call('Finding the latest ${e.name}…', null);
     final client = http.Client();
@@ -86,7 +88,11 @@ class EmulatorInstaller {
 
       if (os == Os.android) {
         onProgress?.call('Opening the installer…', null);
-        await _channel.invokeMethod('installApk', {'path': file.path});
+        try {
+          await _channel.invokeMethod('installApk', {'path': file.path});
+        } on PlatformException catch (err) {
+          throw InstallException(err.message ?? 'Couldn\'t open the installer.');
+        }
         return null;
       }
 
@@ -94,11 +100,13 @@ class EmulatorInstaller {
       final dest = Directory(p.join(root.path, 'app'));
       if (dest.existsSync()) dest.deleteSync(recursive: true);
       dest.createSync(recursive: true);
-      await _unpack(file, dest, archiveType(asset.name)!);
+      await unpackArchive(file, dest, archiveType(asset.name)!);
       if (archiveType(asset.name) != 'appimage') file.deleteSync();
 
-      final exe = _findExecutable(e, dest, os);
-      if (exe == null) throw InstallException('Installed ${e.name}, but couldn\'t find its program file in ${dest.path}.');
+      final exe = findExecutable(e, dest, os);
+      if (exe == null) {
+        throw InstallException('Installed ${e.name}, but couldn\'t find its program file in ${dest.path}.');
+      }
       if (os != Os.windows && !exe.endsWith('.app')) await Process.run('chmod', ['+x', exe]);
 
       final choice = EmulatorChoice(exe, e.name, detail: 'Installed by RomRunner (${asset.version})', emulator: e.id);
@@ -126,93 +134,94 @@ class EmulatorInstaller {
     }
     await sink.close();
   }
+}
 
-  Future<void> _unpack(File file, Directory dest, String type) async {
-    Future<void> run(String exe, List<String> args) async {
-      final r = await Process.run(exe, args);
-      if (r.exitCode != 0) throw InstallException('$exe failed: ${r.stderr}'.trim());
-    }
-
-    switch (type) {
-      case 'appimage':
-        await file.rename(p.join(dest.path, p.basename(file.path)));
-      case 'zip' when Platform.isMacOS:
-        await run('ditto', ['-x', '-k', file.path, dest.path]); // keeps .app symlinks and permissions
-      case 'zip':
-        await extractFileToDisk(file.path, dest.path);
-      case 'tar':
-        await run('tar', ['-xf', file.path, '-C', dest.path]);
-      case '7z':
-        // bsdtar (macOS, Windows 10+) reads 7z; else try 7-Zip if installed.
-        try {
-          await run('tar', ['-xf', file.path, '-C', dest.path]);
-        } catch (_) {
-          final sevenZip = [
-            r'C:\Program Files\7-Zip\7z.exe',
-            '7z',
-            '7za',
-          ].firstWhere((x) => x.contains(Platform.pathSeparator) ? File(x).existsSync() : true);
-          await run(sevenZip, ['x', '-y', '-o${dest.path}', file.path]);
-        }
-      case 'dmg':
-        final mount = Directory.systemTemp.createTempSync('romrunner-dmg');
-        await run('hdiutil', ['attach', '-nobrowse', '-readonly', '-mountpoint', mount.path, file.path]);
-        try {
-          for (final app in mount.listSync().where((x) => x.path.endsWith('.app'))) {
-            await run('cp', ['-R', app.path, dest.path]);
-          }
-        } finally {
-          await Process.run('hdiutil', ['detach', mount.path, '-force']);
-        }
-      default:
-        throw InstallException('Unsupported download format: $type');
-    }
+/// Unpacks a downloaded release into [dest].
+Future<void> unpackArchive(File file, Directory dest, String type) async {
+  Future<void> run(String exe, List<String> args) async {
+    final r = await Process.run(exe, args);
+    if (r.exitCode != 0) throw InstallException('$exe failed: ${r.stderr}'.trim());
   }
 
-  /// The emulator's program inside [dir] (searched a few levels deep).
-  String? _findExecutable(ExternalEmulator e, Directory dir, Os os) {
-    final names = switch (os) {
-      Os.windows => e.windows.map((n) => n.toLowerCase()).toSet(),
-      Os.linux => e.linux.map((n) => n.toLowerCase()).toSet(),
-      Os.macos => e.macApps.map((n) => n.toLowerCase()).toSet(),
-      Os.android => <String>{},
-    };
-    final candidates = <String>[];
-    void walk(Directory d, int depth) {
-      if (depth > 5) return;
-      for (final entry in d.listSync(followLinks: false)) {
-        final n = p.basename(entry.path).toLowerCase();
-        if (os == Os.macos && entry is Directory && n.endsWith('.app')) {
-          if (names.contains(n)) {
-            candidates.insert(0, entry.path);
-          } else {
-            candidates.add(entry.path);
-          }
-          continue; // don't look inside bundles
-        }
-        if (entry is Directory) {
-          walk(entry, depth + 1);
-        } else if (entry is File) {
-          if (names.contains(n)) candidates.insert(0, entry.path);
-          if (os == Os.linux && n.endsWith('.appimage')) candidates.add(entry.path);
-        }
+  switch (type) {
+    case 'appimage':
+      await file.rename(p.join(dest.path, p.basename(file.path)));
+    case 'zip' when Platform.isMacOS:
+      await run('ditto', ['-x', '-k', file.path, dest.path]); // keeps .app symlinks and permissions
+    case 'zip':
+      await extractFileToDisk(file.path, dest.path);
+    case 'tar':
+      await run('tar', ['-xf', file.path, '-C', dest.path]);
+    case '7z':
+      // bsdtar (macOS; Windows 11 23H2+) reads 7z. Otherwise use 7-Zip if it's
+      // installed, or fetch 7-Zip's official standalone extractor (7zr.exe).
+      try {
+        await run('tar', ['-xf', file.path, '-C', dest.path]);
+      } catch (_) {
+        if (!Platform.isWindows) rethrow;
+        await run(await _sevenZip(), ['x', '-y', '-o${dest.path}', file.path]);
       }
-    }
-
-    walk(dir, 0);
-    return candidates.isEmpty ? null : candidates.first;
+    case 'dmg':
+      final mount = Directory.systemTemp.createTempSync('romrunner-dmg');
+      await run('hdiutil', ['attach', '-nobrowse', '-readonly', '-mountpoint', mount.path, file.path]);
+      try {
+        for (final app in mount.listSync().where((x) => x.path.endsWith('.app'))) {
+          await run('cp', ['-R', app.path, dest.path]);
+        }
+      } finally {
+        await Process.run('hdiutil', ['detach', mount.path, '-force']);
+      }
+    default:
+      throw InstallException('Unsupported download format: $type');
   }
 }
 
-/// What a system needs from the user's own console besides the emulator.
-/// Shown when installing; RomRunner can't (and won't) download these.
-String? consoleFilesNote(Console c) => switch (c) {
-      Console.ps2 => 'PCSX2 needs a PS2 BIOS dumped from your console; it asks for it on first start.',
-      Console.xbox => 'xemu needs the MCPX boot ROM, flash BIOS and hard-disk image from your Xbox.',
-      Console.nswitch => 'Switch emulators need prod.keys and firmware dumped from your Switch.',
-      Console.ps3 => 'RPCS3 needs the PS3 system software, which Sony offers free on playstation.com; RPCS3 prompts you to install it.',
-      Console.wiiu => 'Encrypted Wii U games need keys.txt from your console; decrypted games work without it.',
-      Console.n3ds => '3DS games must be decrypted dumps from your own console.',
-      Console.vita => 'Vita3K needs the Vita firmware (free from Sony) and games installed into Vita3K.',
-      _ => null,
-    };
+/// The emulator's program inside [dir] (searched a few levels deep).
+String? findExecutable(ExternalEmulator e, Directory dir, Os os) {
+  final names = switch (os) {
+    Os.windows => e.windows.map((n) => n.toLowerCase()).toSet(),
+    Os.linux => e.linux.map((n) => n.toLowerCase()).toSet(),
+    Os.macos => e.macApps.map((n) => n.toLowerCase()).toSet(),
+    Os.android => <String>{},
+  };
+  final candidates = <String>[];
+  void walk(Directory d, int depth) {
+    if (depth > 5) return;
+    for (final entry in d.listSync(followLinks: false)) {
+      final n = p.basename(entry.path).toLowerCase();
+      if (os == Os.macos && entry is Directory && n.endsWith('.app')) {
+        if (names.contains(n)) {
+          candidates.insert(0, entry.path);
+        } else {
+          candidates.add(entry.path);
+        }
+        continue; // don't look inside bundles
+      }
+      if (entry is Directory) {
+        walk(entry, depth + 1);
+      } else if (entry is File) {
+        if (names.contains(n)) candidates.insert(0, entry.path);
+        if (os == Os.linux && n.endsWith('.appimage')) candidates.add(entry.path);
+      }
+    }
+  }
+
+  walk(dir, 0);
+  return candidates.isEmpty ? null : candidates.first;
+}
+
+/// A 7-Zip command-line extractor on Windows: an installed 7-Zip, or
+/// 7zr.exe downloaded once from 7-zip.org.
+Future<String> _sevenZip() async {
+  for (final path in [r'C:\Program Files\7-Zip\7z.exe', r'C:\Program Files (x86)\7-Zip\7z.exe']) {
+    if (File(path).existsSync()) return path;
+  }
+  final tool = File(p.join((await AppPaths.get()).root, 'emulators', '_tools', '7zr.exe'));
+  if (!tool.existsSync()) {
+    tool.parent.createSync(recursive: true);
+    final res = await http.get(Uri.parse('https://www.7-zip.org/a/7zr.exe'));
+    if (res.statusCode != 200) throw InstallException('Couldn\'t get 7-Zip to unpack this download.');
+    await tool.writeAsBytes(res.bodyBytes, flush: true);
+  }
+  return tool.path;
+}

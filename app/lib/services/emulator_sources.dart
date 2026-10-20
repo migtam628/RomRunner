@@ -119,7 +119,11 @@ class PageLinks extends Source {
 
   @override
   Future<List<ReleaseAsset>> assets(http.Client client) async {
-    final res = await client.get(Uri.parse(page), headers: {'User-Agent': 'Mozilla/5.0 RomRunner'});
+    final res = await client.get(Uri.parse(page), headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+          'Chrome/130.0 Safari/537.36 RomRunner',
+      'Accept': 'text/html',
+    });
     if (res.statusCode != 200) throw StateError('$page: HTTP ${res.statusCode}');
     final base = Uri.parse(page);
     final seen = <String>{};
@@ -290,7 +294,7 @@ const Map<String, EmulatorSource> emulatorSources = {
     Os.linux: ForgejoReleases('git.eden-emu.dev', 'eden-emu/eden'),
     Os.macos: ForgejoReleases('git.eden-emu.dev', 'eden-emu/eden'),
     Os.android: ForgejoReleases('git.eden-emu.dev', 'eden-emu/eden'),
-  }, exclude: r'legacy|optimized|pgo', homepage: 'https://eden-emu.dev'),
+  }, exclude: r'legacy|optimized|pgo|chromeos', homepage: 'https://eden-emu.dev'),
   'ryujinx': EmulatorSource({
     Os.windows: GitLabReleases('git.ryujinx.app', 'ryubing/ryujinx'),
     Os.linux: GitLabReleases('git.ryujinx.app', 'ryubing/ryujinx'),

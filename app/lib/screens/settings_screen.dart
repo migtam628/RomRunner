@@ -4,6 +4,7 @@ import '../models/console.dart';
 import '../services/external_catalog.dart';
 import '../services/library.dart';
 import '../services/external_support.dart';
+import '../widgets/install_dialog.dart';
 import 'library_screen.dart' show askFolderPath;
 
 /// Settings: game folders, and which emulator app opens each system
@@ -276,9 +277,11 @@ class _EmulatorPickerState extends State<_EmulatorPicker> {
               ListTile(
                 leading: const Icon(Icons.search_off_rounded),
                 title: const Text('No emulator found'),
-                subtitle: Text(_ext.canBrowse
-                    ? 'Install $names, then press Rescan, or Browse to point RomRunner at it.'
-                    : 'Install $names on this device, then press Rescan.'),
+                subtitle: Text(_ext.installable(c).isNotEmpty
+                    ? 'Download one below, or install $names yourself and press Rescan.'
+                    : _ext.canBrowse
+                        ? 'Install $names, then press Rescan, or Browse to point RomRunner at it.'
+                        : 'Install $names on this device, then press Rescan.'),
               ),
             for (final o in options)
               ListTile(
@@ -287,6 +290,27 @@ class _EmulatorPickerState extends State<_EmulatorPicker> {
                 title: Text(o.label),
                 subtitle: o.detail == null ? null : Text(o.detail!, maxLines: 2, overflow: TextOverflow.ellipsis),
                 onTap: () => Navigator.pop(context, o),
+              ),
+            for (final e in _ext.installable(c))
+              if (!options.any((o) => o.emulator == e.id && (o.detail ?? '').contains('RomRunner')))
+                ListTile(
+                  leading: const Icon(Icons.download_rounded),
+                  title: Text('Download ${e.name}'),
+                  subtitle: Text('Latest official release${_ext.homepage(e).isEmpty ? '' : ' · ${_ext.homepage(e)}'}'),
+                  onTap: () async {
+                    final result = await showInstallDialog(context, e, c);
+                    if (!context.mounted) return;
+                    if (result is EmulatorChoice) {
+                      Navigator.pop(context, result);
+                    } else if (result == true) {
+                      _scan(); // Android installer opened; pick it up after it's installed
+                    }
+                  },
+                ),
+            if (consoleFilesNote(c) case final note?)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(note, style: theme.textTheme.bodySmall),
               ),
             OverflowBar(
               alignment: MainAxisAlignment.end,

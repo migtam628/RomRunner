@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import '../models/console.dart';
 import '../models/game.dart';
 import 'disc_sniffer.dart';
+import 'emulator_installer.dart';
 import 'external_catalog.dart';
 import 'external_support.dart';
 import 'library.dart';
@@ -315,9 +316,13 @@ class NativeExternalSupport extends ExternalSupport {
       }
     }
     if (choice == null) {
+      final auto = installable(c);
       throw ExternalLaunchException(
-          'No ${c.fullName} emulator found. Install ${emulatorNames(c, os)}, or choose it in Settings.',
-          needsSetup: true);
+          auto.isNotEmpty
+              ? '${c.fullName} needs ${auto.first.name}, which isn\'t installed yet.'
+              : 'No ${c.fullName} emulator found. Install ${emulatorNames(c, os)}, or choose it in Settings.',
+          needsSetup: auto.isEmpty,
+          installable: auto.isEmpty ? null : auto.first);
     }
     final chosen = choice;
     final path = game.path!;
@@ -358,11 +363,24 @@ class NativeExternalSupport extends ExternalSupport {
       if (os == HostOs.linux && File(exe).statSync().mode & 0x49 == 0) {
         await Process.run('chmod', ['+x', exe]);
       }
-      await Process.start(exe, args, mode: ProcessStartMode.detached, workingDirectory: p.dirname(exe));
+      await Process.start(exe, args,
+          mode: ProcessStartMode.detached,
+          workingDirectory: p.dirname(exe),
+          environment: os == HostOs.linux && exe.toLowerCase().endsWith('.appimage') && !_hasFuse2()
+              ? {'APPIMAGE_EXTRACT_AND_RUN': '1'} // AppImages need FUSE 2 otherwise
+              : null);
     } on ProcessException catch (e) {
       throw ExternalLaunchException('Could not start ${chosen.label}: ${e.message}');
     }
   }
+
+  static bool _hasFuse2() => const [
+        '/usr/lib/x86_64-linux-gnu/libfuse.so.2',
+        '/lib/x86_64-linux-gnu/libfuse.so.2',
+        '/usr/lib/aarch64-linux-gnu/libfuse.so.2',
+        '/usr/lib/libfuse.so.2',
+        '/usr/lib64/libfuse.so.2',
+      ].any((f) => File(f).existsSync());
 
   /// The executable inside a macOS .app (CFBundleExecutable).
   String? _macBinary(String app) {
@@ -379,4 +397,20 @@ class NativeExternalSupport extends ExternalSupport {
     final files = dir.listSync().whereType<File>().toList();
     return files.isEmpty ? null : files.first.path;
   }
+
+  // ---- automatic install ----
+
+  @override
+  List<ExternalEmulator> installable(Console c) {
+    final os = host;
+    if (os == null) return const [];
+    return [for (final e in emulatorsFor(c, os)) if (EmulatorInstaller.instance.canInstall(e)) e];
+  }
+
+  @override
+  Future<EmulatorChoice?> install(ExternalEmulator e, Console c, {void Function(String, double?)? onProgress}) =>
+      EmulatorInstaller.instance.install(e, c, onProgress: onProgress);
+
+  @override
+  String homepage(ExternalEmulator e) => EmulatorInstaller.instance.homepage(e);
 }

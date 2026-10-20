@@ -28,11 +28,14 @@ class EmulatorChoice {
 }
 
 class ExternalLaunchException implements Exception {
-  ExternalLaunchException(this.message, {this.needsSetup = false});
+  ExternalLaunchException(this.message, {this.needsSetup = false, this.installable});
   final String message;
 
   /// True when the fix is to pick an emulator in Settings.
   final bool needsSetup;
+
+  /// No emulator is installed, but RomRunner can download this one.
+  final ExternalEmulator? installable;
   @override
   String toString() => message;
 }
@@ -111,4 +114,31 @@ abstract class ExternalSupport {
 
   /// Throws [ExternalLaunchException] with a user-facing message on failure.
   Future<void> launch(Game game);
+
+  // ---- automatic install from official releases ----
+
+  /// Emulators for [c] RomRunner can download on this platform.
+  List<ExternalEmulator> installable(Console c) => const [];
+
+  /// Downloads and installs [e] for [c]. Desktop: returns the new choice
+  /// (already selected). Android: returns null after opening the system
+  /// installer. [onProgress] gets a status line and a 0..1 fraction or null.
+  Future<EmulatorChoice?> install(ExternalEmulator e, Console c, {void Function(String, double?)? onProgress}) =>
+      throw UnsupportedError('Automatic install isn\'t available here.');
+
+  /// Official site of [e], shown next to downloads.
+  String homepage(ExternalEmulator e) => '';
 }
+
+/// What a system needs from the user's own console besides the emulator.
+/// RomRunner can't (and won't) download these.
+String? consoleFilesNote(Console c) => switch (c) {
+      Console.ps2 => 'PCSX2 needs a PS2 BIOS dumped from your console; it asks for it on first start.',
+      Console.xbox => 'xemu needs the MCPX boot ROM, flash BIOS and hard-disk image from your Xbox.',
+      Console.nswitch => 'Switch emulators need prod.keys and firmware dumped from your Switch.',
+      Console.ps3 => 'RPCS3 needs the PS3 system software, which Sony offers free on playstation.com; RPCS3 walks you through installing it.',
+      Console.wiiu => 'Encrypted Wii U games need keys.txt from your console; decrypted games work without it.',
+      Console.n3ds => '3DS games must be decrypted dumps from your own console.',
+      Console.vita => 'Vita3K needs the Vita firmware (free from Sony) and games installed into Vita3K.',
+      _ => null,
+    };

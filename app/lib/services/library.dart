@@ -20,11 +20,14 @@ abstract class GameLibrary {
 }
 
 class ImportResult {
-  const ImportResult({this.games = const [], this.bios = const []});
+  const ImportResult({this.games = const [], this.bios = const [], this.notes = const []});
   final List<Game> games;
 
   /// BIOS files copied into the system folder.
   final List<String> bios;
+
+  /// Extra messages for the user (e.g. files that need another route).
+  final List<String> notes;
 }
 
 /// Well-known BIOS file names, installed into the system folder on import.

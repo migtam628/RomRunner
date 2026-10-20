@@ -19,7 +19,7 @@ class AppPaths {
     for (final dir in [paths.roms, paths.saves, paths.states, paths.system, paths.cores]) {
       Directory(dir).createSync(recursive: true);
     }
-    for (final c in Console.values) {
+    for (final c in Console.builtIn) {
       Directory(paths.romsFor(c)).createSync(recursive: true);
     }
     return _cached = paths;

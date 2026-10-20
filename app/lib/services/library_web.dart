@@ -21,6 +21,11 @@ class WebLibrary implements GameLibrary {
     final byName = {for (final f in picked) f.name: f};
     final classified = await classifyFiles(byName.keys.toList(), resolve);
     final added = <Game>[];
+    final notes = <String>[];
+    if (classified.values.any((c) => c.external)) {
+      notes.add('Switch games can\'t run in a browser');
+      classified.removeWhere((_, c) => c.external);
+    }
     for (final MapEntry(key: name, value: console) in classified.entries) {
       final ext = name.split('.').last.toLowerCase();
       if (Console.companions.contains(ext) && console == Console.ps1) continue;
@@ -31,7 +36,7 @@ class WebLibrary implements GameLibrary {
       added.add(game);
     }
     _games.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    return ImportResult(games: added);
+    return ImportResult(games: added, notes: notes);
   }
 
   @override

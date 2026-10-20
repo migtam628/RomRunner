@@ -11,6 +11,8 @@ A ROM emulator front end for **Android, Fire TV, iOS, macOS, Windows, Linux and 
 | Genesis / Mega Drive / Master System / Game Gear | .md .gen .smd .sms .gg | Genesis Plus GX |
 | PlayStation | .cue+.bin .chd .pbp .m3u | PCSX-ReARMed |
 
+| Nintendo Switch | .nsp .xci .nro | *Your installed Switch emulator* (see below) |
+
 `.zip` files are unpacked on import. Lone `.bin` files ask which system they belong to.
 
 ## How it fits together
@@ -116,6 +118,25 @@ A tag with a dash (`v0.2.0-beta.1`) becomes a pre-release. To test the pipeline 
 
 Phones show a multi-touch pad (layout changes per system). It hides itself once a controller or keyboard is used; the pause menu brings it back.
 
+## Nintendo Switch
+
+RomRunner doesn't emulate Switch itself: no libretro core exists, and the working emulators are large standalone apps. Instead, Switch games sit in the library like everything else and open in a Switch emulator you install and set up separately, with keys and firmware dumped from your own console.
+
+| Platform | Works with | Notes |
+|---|---|---|
+| Windows, Linux | Eden, Citron, Ryujinx/Ryubing | Auto-detected on `PATH` (and AppImages in `~`, `~/Downloads`, `~/Applications` on Linux), or **Browse…** |
+| macOS | Ryujinx-based builds | Detected in `/Applications`; Eden/Citron have no official macOS build |
+| Android | Eden, Citron (any Yuzu-family app) | Needs a recent Snapdragon 8-series phone; detected automatically |
+| iOS, Fire TV, web | — | Not possible: no JIT on iOS, too little GPU on Fire TV, no browser support |
+
+How it works:
+
+- **Settings → Nintendo Switch** picks the emulator and has **Add Switch games**.
+- Games are **linked, never copied**. On desktop, RomRunner stores the file path. On Android, it keeps read access through the system file picker.
+- Playing a game starts the emulator fullscreen with that game: `-f -g <game>` for Yuzu-family emulators, `<game> --fullscreen` for Ryujinx. On Android, RomRunner sends the game to the emulator with a one-time read grant.
+- Removing a Switch game from the library never deletes the file.
+- On desktop, **Add ROMs** also accepts `.nsp`/`.xci` and links them. On Android, use **Add Switch games** so multi-GB files aren't copied.
+
 ## Saves and BIOS
 
 - Battery saves (`.srm`) are written automatically every ~10 s and on exit.
@@ -135,11 +156,12 @@ Not verified (no hardware here): Android, Fire TV, iOS, macOS and Windows builds
 
 ## Next steps worth doing
 
-1. Gamepads on iOS/macOS/Windows/Linux (the `gamepads` package; Android/Fire TV already work).
-2. Core options UI (region, palette, renderer settings) — the bridge already supports `rr_set_option`.
-3. Box art via the libretro thumbnails repo, recent/favorites rows.
-4. Rewind and shaders (CRT/LCD) — the frame painter is the hook for shaders.
-5. Upload to the GPU via a texture instead of decoding an image per frame (only matters for high-res PS1 modes).
+1. Return to RomRunner automatically when the Switch emulator exits (desktop).
+2. Gamepads on iOS/macOS/Windows/Linux (the `gamepads` package; Android/Fire TV already work).
+3. Core options UI (region, palette, renderer settings) — the bridge already supports `rr_set_option`.
+4. Box art via the libretro thumbnails repo, recent/favorites rows.
+5. Rewind and shaders (CRT/LCD) — the frame painter is the hook for shaders.
+6. Upload to the GPU via a texture instead of decoding an image per frame (only matters for high-res PS1 modes).
 
 ## Legal
 

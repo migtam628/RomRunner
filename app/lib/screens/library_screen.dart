@@ -5,7 +5,9 @@ import '../input/key_mapping.dart';
 import '../models/console.dart';
 import '../models/game.dart';
 import '../services/library.dart';
+import '../services/switch_support.dart';
 import 'game_screen.dart';
+import 'settings_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -42,7 +44,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         builder: (context) => SimpleDialog(
           title: Text('Which system is "$fileName" for?'),
           children: [
-            for (final c in Console.values)
+            for (final c in Console.builtIn)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, c),
                 child: Row(children: [
@@ -67,6 +69,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         if (added.length == 1) 'Added ${added.first.title}',
         if (added.length > 1) 'Added ${added.length} games',
         if (result.bios.isNotEmpty) 'Installed BIOS: ${result.bios.join(', ')}',
+        ...result.notes,
       ];
       _snack(parts.isEmpty ? 'No supported ROMs in that selection' : parts.join(' · '));
       if (kIsWeb && added.length == 1) _play(added.first);
@@ -77,12 +80,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
+  void _snack(String msg, {SnackBarAction? action}) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+    ..showSnackBar(SnackBar(content: Text(msg), action: action));
 
   Future<void> _play(Game game) async {
+    if (game.console.external) {
+      try {
+        await SwitchSupport.instance.launch(game);
+        _snack('Opening ${game.title}…');
+      } on SwitchLaunchException catch (e) {
+        _snack(e.message,
+            action: e.needsSetup ? SnackBarAction(label: 'Settings', onPressed: _openSettings) : null);
+      }
+      return;
+    }
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => GameScreen(game: game)));
+  }
+
+  Future<void> _openSettings() async {
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    if (changed == true) await _reload();
   }
 
   Future<void> _remove(Game game) async {
@@ -90,7 +108,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remove game?'),
-        content: Text('${game.title} will be removed from the library. Save states are kept.'),
+        content: Text(game.console.external
+            ? '${game.title} will be removed from the library. The file itself stays where it is.'
+            : '${game.title} will be removed from the library. Save states are kept.'),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
@@ -124,7 +144,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               for (final c in Console.values)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text('${c.fullName} — ${c.extensions.map((e) => '.$e').join(' ')} (${c.core})'),
+                  child: Text('${c.fullName} — ${c.extensions.map((e) => '.$e').join(' ')}'
+                      '${c.external ? '' : ' (${c.core})'}'),
                 ),
               const SizedBox(height: 20),
               Text('Controls', style: Theme.of(context).textTheme.titleMedium),
@@ -154,6 +175,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         title: const Text('RomRunner', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5)),
         actions: [
           IconButton(tooltip: 'Info', onPressed: _showInfo, icon: const Icon(Icons.info_outline_rounded)),
+          IconButton(tooltip: 'Settings', onPressed: _openSettings, icon: const Icon(Icons.settings_outlined)),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
@@ -237,7 +259,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Add ROMs and disc images of games you own.\n'
-              'NES · Game Boy · GBA · SNES · Genesis · PS1',
+              'NES · Game Boy · GBA · SNES · Genesis · PS1'
+              '${SwitchSupport.instance.supported ? ' · Switch' : ''}',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),

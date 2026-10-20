@@ -8,6 +8,7 @@ import '../models/console.dart';
 import '../models/game.dart';
 import 'library.dart';
 import 'paths.dart';
+import 'switch_support.dart';
 
 GameLibrary createLibrary() => NativeLibrary();
 
@@ -18,7 +19,7 @@ class NativeLibrary implements GameLibrary {
   Future<List<Game>> load() async {
     final paths = await AppPaths.get();
     final games = <Game>[];
-    for (final c in Console.values) {
+    for (final c in Console.builtIn) {
       final dir = Directory(paths.romsFor(c));
       if (!dir.existsSync()) continue;
       final files = dir.listSync().whereType<File>().toList();
@@ -32,6 +33,7 @@ class NativeLibrary implements GameLibrary {
         games.add(Game(title: Game.titleFromFile(name), console: c, fileName: name, path: f.path));
       }
     }
+    games.addAll(await SwitchSupport.instance.linkedGames());
     games.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return games;
   }
@@ -47,6 +49,7 @@ class NativeLibrary implements GameLibrary {
     // their contents are classified like any other file; everything else is
     // streamed so large disc images never sit in memory.
     final writers = <String, Future<void> Function(File dest)>{};
+    final originals = <String, String>{}; // name -> picked path (not for zip contents)
     for (final f in picked) {
       if (p.extension(f.name).toLowerCase() == '.zip') {
         final archive = ZipDecoder().decodeBytes(await f.readAsBytes());
@@ -54,6 +57,7 @@ class NativeLibrary implements GameLibrary {
           writers[p.basename(entry.name)] = (dest) => dest.writeAsBytes(entry.content as List<int>, flush: true);
         }
       } else {
+        if (f.path != null) originals[f.name] = f.path!;
         writers[f.name] = (dest) async {
           final sink = dest.openWrite();
           await sink.addStream(f.readAsByteStream());
@@ -69,6 +73,23 @@ class NativeLibrary implements GameLibrary {
     }
 
     final classified = await classifyFiles(writers.keys.toList(), resolve);
+    final notes = <String>[];
+
+    // Switch games are linked where they are, never copied (they're huge).
+    final switchNames = [for (final e in classified.entries) if (e.value.external) e.key];
+    classified.removeWhere((name, c) => c.external);
+    if (switchNames.isNotEmpty) {
+      final sw = SwitchSupport.instance;
+      final linkable = [for (final n in switchNames) if (originals[n] != null) originals[n]!];
+      if (!sw.supported) {
+        notes.add(sw.unsupportedReason);
+      } else if (Platform.isAndroid || linkable.isEmpty) {
+        notes.add('Add Switch games from Settings → Add Switch games');
+      } else {
+        added.addAll(await sw.linkFiles(linkable));
+      }
+    }
+
     for (final MapEntry(key: name, value: console) in classified.entries) {
       final dest = File(p.join(paths.romsFor(console), name));
       await writers[name]!(dest);
@@ -78,11 +99,12 @@ class NativeLibrary implements GameLibrary {
       }
     }
     await FilePicker.clearTemporaryFiles();
-    return ImportResult(games: added, bios: bios);
+    return ImportResult(games: added, bios: bios, notes: notes);
   }
 
   @override
   Future<void> remove(Game game) async {
+    if (game.console.external) return SwitchSupport.instance.forget(game); // never delete the user's file
     final path = game.path;
     if (path == null) return;
     final file = File(path);

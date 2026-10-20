@@ -290,3 +290,4 @@ jobs:
             | Web | `-web.zip` | Serve the folder over HTTP(S); games need internet for EmulatorJS. |
 
             Bring your own ROMs, disc images and BIOS files.
+            Switch games open in a Switch emulator you install separately (Eden, Citron or Ryujinx); see the README.

@@ -73,6 +73,18 @@ enum Console {
     color: Color(0xFF94A3B8),
     face: [PadButton('□', Pad.y), PadButton('△', Pad.x), PadButton('✕', Pad.b), PadButton('○', Pad.a)],
     shoulders: [PadButton('L1', Pad.l), PadButton('R1', Pad.r), PadButton('L2', Pad.l2), PadButton('R2', Pad.r2)],
+  ),
+  // Not emulated by RomRunner: games are handed to an installed Switch
+  // emulator (Eden, Citron, Ryujinx...). See services/switch_support.dart.
+  nswitch(
+    name: 'Switch',
+    fullName: 'Nintendo Switch (opens in your Switch emulator)',
+    extensions: ['nsp', 'xci', 'nro'],
+    core: '',
+    ejsCore: '',
+    color: Color(0xFF14B8C8),
+    face: [],
+    external: true,
   );
 
   const Console({
@@ -84,6 +96,7 @@ enum Console {
     required this.color,
     required this.face,
     this.shoulders = const [],
+    this.external = false,
   });
 
   final String name;
@@ -98,6 +111,12 @@ enum Console {
   final Color color;
   final List<PadButton> face;
   final List<PadButton> shoulders;
+
+  /// True when games are launched in another app instead of a libretro core.
+  final bool external;
+
+  /// Systems RomRunner emulates itself.
+  static List<Console> get builtIn => values.where((c) => !c.external).toList();
 
   /// Extensions that could belong to more than one console (asked on import).
   static const ambiguous = {'bin', 'zip', '7z', 'img'};

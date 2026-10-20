@@ -17,7 +17,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/app"
 BB="https://buildbot.libretro.com/nightly"
-CORES="${CORES:-fceumm gambatte mgba snes9x genesis_plus_gx pcsx_rearmed}"
+# One per built-in system (see app/lib/models/console.dart). genesis_plus_gx
+# also runs Sega CD; melondsds is the DS core (melonds on iOS).
+CORES="${CORES:-fceumm gambatte mgba melondsds snes9x mednafen_vb genesis_plus_gx picodrive mednafen_pce_fast mednafen_ngp mednafen_wswan stella prosystem handy fbneo pcsx_rearmed}"
 FAILED=()
 
 for tool in curl unzip; do
@@ -59,6 +61,7 @@ case "$target" in
     for c in $CORES; do
       name="${c}_libretro_ios.dylib"
       [ "$c" = "mgba" ] && name="mgba_libretro.dylib"   # buildbot names this one differently
+      [ "$c" = "melondsds" ] && name="melonds_libretro_ios.dylib"   # no melonDS DS build for iOS
       fetch "$BB/apple/ios-arm64/latest/$name.zip" "$name" "${DEST:-$APP/ios/cores}/$name"
     done
     ;;

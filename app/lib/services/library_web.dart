@@ -27,9 +27,10 @@ class WebLibrary implements GameLibrary {
     final classified = await classifyFiles(byName.keys.toList(), resolve);
     final added = <Game>[];
     final notes = <String>[];
-    if (classified.values.any((c) => c.external)) {
-      notes.add('Switch games can\'t run in a browser');
-      classified.removeWhere((_, c) => c.external);
+    final unplayable = {for (final c in classified.values) if (!c.playsHere) c.name};
+    if (unplayable.isNotEmpty) {
+      notes.add('${unplayable.join(', ')} games can\'t run in a browser');
+      classified.removeWhere((_, c) => !c.playsHere);
     }
     for (final MapEntry(key: name, value: console) in classified.entries) {
       final ext = name.split('.').last.toLowerCase();
@@ -79,10 +80,10 @@ class WebLibrary implements GameLibrary {
       byPath[rel] = f;
     }
     if (byPath.isEmpty) return const FolderResult(folder: '', found: 0);
-    final scan = classifyFolderPaths(byPath.keys);
+    final scan = await classifyFolderPaths(byPath.keys);
     var found = 0;
     for (final MapEntry(key: rel, value: console) in scan.games.entries) {
-      if (console.external) continue; // Switch can't run in a browser
+      if (!console.playsHere) continue; // e.g. PS2 or Switch can't run in a browser
       final f = byPath[rel]!;
       final buffer = await f.arrayBuffer().toDart;
       final game = Game(

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../models/console.dart';
+import '../services/external_catalog.dart';
 import '../services/library.dart';
-import '../services/switch_support.dart';
+import '../services/external_support.dart';
 import 'library_screen.dart' show askFolderPath;
 
-/// Settings: game folders and the Nintendo Switch emulator.
+/// Settings: game folders, and which emulator app opens each system
+/// RomRunner doesn't emulate itself.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -14,12 +16,10 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _sw = SwitchSupport.instance;
+  final _ext = ExternalSupport.instance;
   final _library = GameLibrary.instance;
   List<String> _folders = const [];
-  EmulatorChoice? _current;
-  List<EmulatorChoice> _found = const [];
-  bool _scanning = true;
+  Map<Console, EmulatorChoice?> _chosen = const {};
 
   /// Set when games were added, so the library refreshes on return.
   bool _changed = false;
@@ -27,7 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _scan();
+    _loadChoices();
     _loadFolders();
   }
 
@@ -54,45 +54,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _loadFolders();
   }
 
-  Future<void> _scan() async {
-    setState(() => _scanning = true);
-    final current = await _sw.current();
-    var found = const <EmulatorChoice>[];
-    if (_sw.supported) {
-      try {
-        found = await _sw.detect();
-      } catch (_) {
-        // Detection is best-effort; Browse still works.
-      }
+  Future<void> _loadChoices() async {
+    final map = <Console, EmulatorChoice?>{};
+    for (final c in _ext.systems) {
+      map[c] = await _ext.current(c);
     }
     if (!mounted) return;
-    setState(() {
-      _current = current;
-      _found = found;
-      _scanning = false;
-    });
+    // Pre-select the only emulator found for systems nothing is set for.
+    for (final c in _ext.systems.where((c) => map[c] == null)) {
+      try {
+        final found = await _ext.detect(c);
+        if (found.length == 1) {
+          await _ext.choose(c, found.first);
+          map[c] = found.first;
+        }
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _chosen = map);
   }
 
-  Future<void> _pick(EmulatorChoice choice) async {
-    await _sw.choose(choice);
-    if (mounted) setState(() => _current = choice);
-  }
-
-  Future<void> _browse() async {
-    final choice = await _sw.browse();
-    if (choice != null) await _pick(choice);
+  Future<void> _pickFor(Console c) async {
+    final choice = await showModalBottomSheet<EmulatorChoice>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _EmulatorPicker(console: c, current: _chosen[c]),
+    );
+    if (choice == null) return;
+    await _ext.choose(c, choice);
+    if (mounted) setState(() => _chosen = {..._chosen, c: choice});
   }
 
   Future<void> _addGames() async {
     try {
-      final added = await _sw.addGames();
+      final added = await _ext.addGames();
       if (!mounted) return;
       if (added.isNotEmpty) _changed = true;
       _snack(added.isEmpty
-          ? 'No .nsp, .xci or .nro files in that selection'
+          ? 'Nothing in that selection belongs to a system listed here'
           : added.length == 1
-              ? 'Added ${added.first.title}'
-              : 'Added ${added.length} Switch games');
+              ? 'Added ${added.first.title} (${added.first.console.name})'
+              : 'Added ${added.length} games');
     } catch (e) {
       _snack('Could not add games: $e');
     }
@@ -106,14 +108,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
-
-    // Current choice first, then everything detected that isn't it.
-    final options = <EmulatorChoice>[
-      ?_current,
-      ..._found.where((f) => f.id != _current?.id),
-      if (!_sw.canBrowse && _current?.id != SwitchSupport.chooseEachTime)
-        const EmulatorChoice(SwitchSupport.chooseEachTime, 'Ask each time', detail: 'Pick an app from the Open with sheet'),
-    ];
+    final systems = _ext.systems;
+    final unavailable = _ext.unavailable;
 
     return PopScope(
       canPop: false,
@@ -131,8 +127,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 _library.foldersAreLinked
                     ? 'Games in these folders (and their subfolders) appear in the library and stay where they '
-                        'are. RomRunner rescans them each time the library opens. Put ambiguous .bin files in a '
-                        'folder named after their system, such as "Genesis" or "PS1".'
+                        'are. RomRunner rescans them each time the library opens. Disc images (.iso, .bin) are '
+                        'recognised by their contents; if one isn\'t, put it in a folder named after its system, '
+                        'such as "PS2" or "Genesis".'
                     : 'In the browser, picking a folder imports its games for this session only.',
                 style: muted,
               ),
@@ -168,72 +165,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 28),
             ],
-            Row(children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: Console.nswitch.color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 10),
-              Text('Nintendo Switch', style: theme.textTheme.titleMedium),
-            ]),
+            Text('Other systems', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            if (!_sw.supported)
-              Text(_sw.unsupportedReason, style: muted)
+            if (systems.isEmpty)
+              Text(
+                unavailable.isEmpty ? '' : _ext.unsupportedReason(unavailable.first).replaceFirst(unavailable.first.fullName, 'These'),
+                style: muted,
+              )
             else ...[
               Text(
-                'RomRunner doesn\'t emulate Switch itself. It keeps your Switch games in the library and '
-                'opens them in a Switch emulator you install and set up separately (Eden, Citron or '
-                'Ryujinx), using keys and firmware dumped from your own console.',
+                'RomRunner opens these systems in an emulator app you install separately, set up with BIOS, keys '
+                'or firmware from your own console. Their games are linked where they are, never copied.',
                 style: muted,
               ),
-              const SizedBox(height: 20),
-              Text('Emulator', style: theme.textTheme.labelLarge),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Card(
                 margin: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    if (_scanning)
-                      const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator())
-                    else if (options.isEmpty)
+                    for (final c in systems)
                       ListTile(
-                        leading: const Icon(Icons.search_off_rounded),
-                        title: const Text('No Switch emulator found'),
-                        subtitle: Text(_sw.canBrowse
-                            ? 'Install Eden, Citron or Ryujinx, then press Browse to point RomRunner at it.'
-                            : 'Install Eden or Citron on this device, then press Rescan.'),
+                        leading: CircleAvatar(radius: 6, backgroundColor: c.color),
+                        title: Text(c.fullName),
+                        subtitle: Text(_chosen[c]?.label ?? 'Choose emulator…',
+                            style: _chosen[c] == null ? TextStyle(color: theme.colorScheme.primary) : null),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => _pickFor(c),
                       ),
-                    for (final o in options)
-                      ListTile(
-                        leading: Icon(o.id == _current?.id ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                            color: o.id == _current?.id ? theme.colorScheme.primary : null),
-                        title: Text(o.label),
-                        subtitle: o.detail == null ? null : Text(o.detail!, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        onTap: () => _pick(o),
-                      ),
-                    OverflowBar(
-                      alignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton.icon(onPressed: _scan, icon: const Icon(Icons.refresh_rounded), label: const Text('Rescan')),
-                        if (_sw.canBrowse)
-                          TextButton.icon(
-                            onPressed: _browse,
-                            icon: const Icon(Icons.folder_open_rounded),
-                            label: const Text('Browse…'),
-                          ),
-                      ],
-                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text('Games', style: theme.textTheme.labelLarge),
-              const SizedBox(height: 4),
-              Text(
-                'Switch games (.nsp, .xci, .nro) are linked where they are, never copied. '
-                'Moving or deleting a file removes it from what RomRunner can open.',
-                style: muted,
               ),
               const SizedBox(height: 12),
               Align(
@@ -241,10 +201,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: FilledButton.icon(
                   onPressed: _addGames,
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add Switch games'),
+                  label: const Text('Add games without copying'),
                 ),
               ),
             ],
+            if (unavailable.isNotEmpty && systems.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('Not available on this device: ${unavailable.map((c) => c.name).join(', ')}.', style: muted),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet: pick the emulator app for one system.
+class _EmulatorPicker extends StatefulWidget {
+  const _EmulatorPicker({required this.console, this.current});
+  final Console console;
+  final EmulatorChoice? current;
+
+  @override
+  State<_EmulatorPicker> createState() => _EmulatorPickerState();
+}
+
+class _EmulatorPickerState extends State<_EmulatorPicker> {
+  final _ext = ExternalSupport.instance;
+  List<EmulatorChoice>? _found;
+
+  @override
+  void initState() {
+    super.initState();
+    _scan();
+  }
+
+  Future<void> _scan() async {
+    setState(() => _found = null);
+    List<EmulatorChoice> found;
+    try {
+      found = await _ext.detect(widget.console);
+    } catch (_) {
+      found = const [];
+    }
+    if (mounted) setState(() => _found = found);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = widget.console;
+    final current = widget.current;
+    final options = <EmulatorChoice>[
+      ?current,
+      ...?_found?.where((f) => f.id != current?.id),
+      if (!_ext.canBrowse && current?.id != ExternalSupport.chooseEachTime)
+        const EmulatorChoice(ExternalSupport.chooseEachTime, 'Ask each time', detail: 'Pick an app from the Open with sheet'),
+    ];
+    final names = emulatorNames(c, _ext.host);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(c.fullName, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('Works with: $names', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 12),
+            if (_found == null)
+              const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator())
+            else if (options.isEmpty)
+              ListTile(
+                leading: const Icon(Icons.search_off_rounded),
+                title: const Text('No emulator found'),
+                subtitle: Text(_ext.canBrowse
+                    ? 'Install $names, then press Rescan, or Browse to point RomRunner at it.'
+                    : 'Install $names on this device, then press Rescan.'),
+              ),
+            for (final o in options)
+              ListTile(
+                leading: Icon(o.id == current?.id ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                    color: o.id == current?.id ? theme.colorScheme.primary : null),
+                title: Text(o.label),
+                subtitle: o.detail == null ? null : Text(o.detail!, maxLines: 2, overflow: TextOverflow.ellipsis),
+                onTap: () => Navigator.pop(context, o),
+              ),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(onPressed: _scan, icon: const Icon(Icons.refresh_rounded), label: const Text('Rescan')),
+                if (_ext.canBrowse)
+                  TextButton.icon(
+                    onPressed: () async {
+                      final choice = await _ext.browse(c);
+                      if (choice != null && context.mounted) Navigator.pop(context, choice);
+                    },
+                    icon: const Icon(Icons.folder_open_rounded),
+                    label: const Text('Browse…'),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

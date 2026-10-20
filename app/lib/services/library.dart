@@ -63,58 +63,94 @@ class ImportResult {
 
 /// Well-known BIOS file names, installed into the system folder on import.
 final biosPattern = RegExp(
-  r'^(scph\d+[a-z]?|psxonpsp660|ps1_rom|gba_bios|gb_bios|gbc_bios|sgb_bios|bios_cd_[eju]|bios_md|disksys)\.(bin|rom)$',
+  r'^(scph\d+[a-z]?|psxonpsp660|ps1_rom|gba_bios|gb_bios|gbc_bios|sgb_bios|bios_cd_[eju]|bios_md|disksys|lynxboot'
+  r'|bios7|bios9|firmware|dsi_bios7|dsi_bios9|dsi_firmware|dsi_nand)\.(bin|rom|img)$',
   caseSensitive: false,
 );
 
-/// Shared helper: groups picked file names into playable entries.
-/// Returns map of file name -> console, skipping companion files that belong
-/// to a cue sheet in the same pick.
-Future<Map<String, Console>> classifyFiles(List<String> names, ConsoleResolver resolve) async {
+/// Arcade BIOS romsets: kept next to the games (FinalBurn Neo looks there)
+/// but not listed as games.
+const arcadeBiosSets = {'neogeo', 'pgm', 'skns', 'nmk004', 'isgsm', 'decocass', 'cchip', 'ym2608', 'bubsys', 'qsound', 'namcoc69'};
+
+/// Looks inside a disc image to name its system (native only).
+typedef DiscSniffer = Future<Console?> Function(String path);
+
+String _ext(String name) {
+  final base = name.split(RegExp(r'[/\\]')).last;
+  final dot = base.lastIndexOf('.');
+  return dot <= 0 ? '' : base.substring(dot + 1).toLowerCase();
+}
+
+/// The system for one file, without asking: a folder name that names a
+/// system accepting this extension wins, then an extension unique to one
+/// system, then sniffing the disc. Null when it's still unknown.
+Future<Console?> identify(String path, {DiscSniffer? sniff, bool useFolderName = true}) async {
+  final ext = _ext(path);
+  if (ext.isEmpty) return null;
+  if (useFolderName) {
+    final hinted = consoleFromFolderName(path);
+    if (hinted != null && hinted.accepts(ext)) return hinted;
+  }
+  final known = Console.fromExtension(ext);
+  // Unique extensions, except .chd/.pbp/.cue/.m3u which PS1 shares with
+  // PS2/PSP/Sega CD: let the sniffer have a look at those first.
+  if (known != null && !(known == Console.ps1 && sniff != null)) return known;
+  if (sniff != null) {
+    final sniffed = await sniff(path);
+    if (sniffed != null) return sniffed;
+  }
+  return known;
+}
+
+/// Shared helper for Add ROMs: assigns picked files to systems, asking the
+/// user only when nothing else can tell. Tracks of a cue sheet follow the
+/// sheet. [paths] maps each name to its original path when there is one
+/// (for sniffing). Returns file name -> console.
+Future<Map<String, Console>> classifyFiles(
+  List<String> names,
+  ConsoleResolver resolve, {
+  Map<String, String> paths = const {},
+  DiscSniffer? sniff,
+}) async {
   final result = <String, Console>{};
-  final hasDiscSheet = names.any((n) {
-    final e = n.split('.').last.toLowerCase();
-    return e == 'cue' || e == 'ccd' || e == 'm3u';
-  });
+  final sheets = <String, Console>{};
+  final companions = <String>[];
+  final hasDiscSheet = names.any((n) => const {'cue', 'ccd', 'm3u'}.contains(_ext(n)));
+
   for (final name in names) {
-    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
-    final known = Console.fromExtension(ext);
-    if (known != null) {
-      result[name] = known;
-    } else if (Console.companions.contains(ext) && hasDiscSheet) {
-      result[name] = Console.ps1; // track file for a cue sheet
-    } else if (Console.ambiguous.contains(ext) || ext.isEmpty) {
-      final chosen = await resolve(name);
-      if (chosen != null) result[name] = chosen;
+    final ext = _ext(name);
+    if (Console.companions.contains(ext) && hasDiscSheet) {
+      companions.add(name); // decided after the sheets
+      continue;
     }
+    final source = paths[name];
+    var console = await identify(source ?? name, sniff: source == null ? null : sniff);
+    if (console == null && (Console.ambiguous.contains(ext) || ext.isEmpty)) {
+      console = await resolve(name);
+    }
+    if (console == null) continue;
+    result[name] = console;
+    if (const {'cue', 'ccd', 'm3u'}.contains(ext)) sheets[name] = console;
+  }
+
+  for (final name in companions) {
+    // "Game (Track 2).bin" belongs to "Game.cue"; fall back to any sheet.
+    final base = name.split(' (Track').first.replaceAll(RegExp(r'\.[^.]+$'), '');
+    final sheet = sheets.entries.firstWhere(
+      (e) => e.key.replaceAll(RegExp(r'\.[^.]+$'), '') == base,
+      orElse: () => sheets.entries.isEmpty ? const MapEntry('', Console.ps1) : sheets.entries.first,
+    );
+    result[name] = sheet.value;
   }
   return result;
 }
-
-/// Normalised folder names that identify a system (for ambiguous files
-/// such as a Genesis ".bin" sitting in a folder called "Mega Drive").
-const _folderHints = <Console, List<String>>{
-  Console.nes: ['nes', 'famicom', 'fds', 'nintendoentertainmentsystem'],
-  Console.gb: ['gb', 'gbc', 'gameboy', 'gameboycolor', 'gameboycolour'],
-  Console.gba: ['gba', 'gameboyadvance'],
-  Console.snes: ['snes', 'sfc', 'supernintendo', 'superfamicom', 'supernes'],
-  Console.genesis: [
-    'genesis', 'megadrive', 'md', 'segagenesis', 'segamegadrive', 'mastersystem', 'sms',
-    'segamastersystem', 'gamegear', 'gg', 'segagamegear', 'sega',
-  ],
-  Console.ps1: ['ps1', 'psx', 'playstation', 'ps', 'sonyplaystation', 'playstation1'],
-  Console.nswitch: ['switch', 'nsw', 'nintendoswitch'],
-};
 
 /// The system suggested by the nearest folder name in [path], if any.
 Console? consoleFromFolderName(String path) {
   final parts = path.split(RegExp(r'[/\\]'));
   for (var i = parts.length - 2; i >= 0; i--) {
-    final n = parts[i].toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-    if (n.isEmpty) continue;
-    for (final MapEntry(key: c, value: names) in _folderHints.entries) {
-      if (names.contains(n)) return c;
-    }
+    final c = Console.fromFolderName(parts[i]);
+    if (c != null) return c;
   }
   return null;
 }
@@ -128,10 +164,11 @@ class FolderScan {
 }
 
 /// Decides which files in a folder tree are games, without asking the user.
-/// Cue-sheet tracks are hidden behind their sheet; ambiguous files (.bin,
-/// .img) are assigned by folder name; archives are skipped (they must be
-/// unpacked with Add ROMs).
-FolderScan classifyFolderPaths(Iterable<String> paths) {
+/// Cue-sheet tracks are hidden behind their sheet; shared extensions (.iso,
+/// .bin ...) are assigned by folder name or disc sniffing; zips count as
+/// arcade romsets only inside an arcade-named folder; anything still
+/// unknown is skipped and counted.
+Future<FolderScan> classifyFolderPaths(Iterable<String> paths, {DiscSniffer? sniff}) async {
   final byDir = <String, List<String>>{};
   for (final path in paths) {
     byDir.putIfAbsent(p.dirname(path), () => []).add(path);
@@ -139,24 +176,26 @@ FolderScan classifyFolderPaths(Iterable<String> paths) {
   final games = <String, Console>{};
   var skipped = 0;
   for (final files in byDir.values) {
-    String ext(String f) => p.extension(f).replaceFirst('.', '').toLowerCase();
-    final hasSheet = files.any((f) => const {'cue', 'ccd', 'm3u'}.contains(ext(f)));
+    final hasSheet = files.any((f) => const {'cue', 'ccd', 'm3u'}.contains(_ext(f)));
     for (final f in files) {
-      final e = ext(f);
-      if (p.basename(f).startsWith('.')) continue; // macOS "._" files etc.
-      if (biosPattern.hasMatch(p.basename(f))) continue;
+      final e = _ext(f);
+      final base = p.basename(f);
+      if (base.startsWith('.')) continue; // macOS "._" files etc.
+      if (biosPattern.hasMatch(base)) continue;
       if (hasSheet && Console.companions.contains(e)) continue;
-      final known = Console.fromExtension(e);
-      if (known != null) {
-        games[f] = known;
-      } else if (e == 'bin' || e == 'img') {
+      if (e == 'zip' || e == '7z') {
         final hinted = consoleFromFolderName(f);
-        if (hinted != null && !hinted.external) {
-          games[f] = hinted;
+        if (hinted == Console.arcade && e == 'zip') {
+          if (!arcadeBiosSets.contains(p.basenameWithoutExtension(f).toLowerCase())) games[f] = Console.arcade;
         } else {
           skipped++;
         }
-      } else if (e == 'zip' || e == '7z') {
+        continue;
+      }
+      final c = await identify(f, sniff: sniff);
+      if (c != null) {
+        games[f] = c;
+      } else if (Console.ambiguous.contains(e)) {
         skipped++;
       }
     }

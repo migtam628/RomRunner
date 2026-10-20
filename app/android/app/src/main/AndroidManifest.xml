@@ -59,6 +59,34 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Emulator apps RomRunner can open games in (keep in sync with external_catalog.dart; a test checks). -->
+        <package android:name="aenu.aps3e" />
+        <package android:name="aenu.aps3e.premium" />
+        <package android:name="aenu.ax360e" />
+        <package android:name="aenu.ax360e.free" />
+        <package android:name="com.armsx2" />
+        <package android:name="com.armsx2.nightly" />
+        <package android:name="com.izzy2lost.x1box" />
+        <package android:name="com.virtualapplications.play" />
+        <package android:name="come.nanodata.armsx2" />
+        <package android:name="dev.eden.eden_emulator" />
+        <package android:name="dev.eden.eden_emulator.nightly" />
+        <package android:name="dev.legacy.eden_emulator" />
+        <package android:name="info.cemu.Cemu" />
+        <package android:name="info.cemu.cemu" />
+        <package android:name="io.github.lime3ds.android" />
+        <package android:name="org.azahar_emu.azahar" />
+        <package android:name="org.dolphinemu.dolphinemu" />
+        <package android:name="org.kenjinx.android" />
+        <package android:name="org.mupen64plusae.v3.alpha" />
+        <package android:name="org.mupen64plusae.v3.fzurita" />
+        <package android:name="org.mupen64plusae.v3.fzurita.amazon" />
+        <package android:name="org.mupen64plusae.v3.fzurita.pro" />
+        <package android:name="org.ppsspp.ppsspp" />
+        <package android:name="org.ppsspp.ppssppgold" />
+        <package android:name="org.vita3k.emulator" />
+        <package android:name="xyz.aethersx2.android" />
+        <package android:name="xyz.aethersx2.tturnip" />
         <!-- Find installed Switch emulators that open content:// game files (Android 11+ package visibility). -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>

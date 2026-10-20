@@ -9,8 +9,9 @@ import 'package:path/path.dart' as p;
 import '../models/console.dart';
 import '../models/game.dart';
 import 'library.dart';
+import 'disc_sniffer.dart';
+import 'external_support.dart';
 import 'paths.dart';
-import 'switch_support.dart';
 
 GameLibrary createLibrary() => NativeLibrary();
 
@@ -28,14 +29,14 @@ class NativeLibrary implements GameLibrary {
       final hasSheet = files.any((f) => const {'.cue', '.ccd', '.m3u'}.contains(p.extension(f.path).toLowerCase()));
       for (final f in files) {
         final ext = p.extension(f.path).replaceFirst('.', '').toLowerCase();
-        final listed = c.extensions.contains(ext) ||
-            (Console.ambiguous.contains(ext) && !(c == Console.ps1 && hasSheet));
-        if (!listed) continue;
         final name = p.basename(f.path);
+        if (!(c.accepts(ext) || Console.ambiguous.contains(ext))) continue;
+        if (hasSheet && Console.companions.contains(ext)) continue; // tracks of a cue sheet
+        if (c == Console.arcade && arcadeBiosSets.contains(p.basenameWithoutExtension(name).toLowerCase())) continue;
         games.add(Game(title: Game.titleFromFile(name), console: c, fileName: name, path: f.path));
       }
     }
-    games.addAll(await SwitchSupport.instance.linkedGames());
+    games.addAll(await ExternalSupport.instance.linkedGames());
     final seen = {for (final g in games) g.path};
     for (final folder in await folders()) {
       for (final g in await _scanFolder(folder)) {
@@ -60,9 +61,19 @@ class NativeLibrary implements GameLibrary {
     final originals = <String, String>{}; // name -> picked path (not for zip contents)
     for (final f in picked) {
       if (p.extension(f.name).toLowerCase() == '.zip') {
-        final archive = ZipDecoder().decodeBytes(await f.readAsBytes());
-        for (final entry in archive.files.where((e) => e.isFile)) {
-          writers[p.basename(entry.name)] = (dest) => dest.writeAsBytes(entry.content as List<int>, flush: true);
+        final bytes = await f.readAsBytes();
+        final archive = ZipDecoder().decodeBytes(bytes);
+        final entries = archive.files.where((e) => e.isFile).toList();
+        // A zip holding a ROM we recognise is just packaging: unpack it.
+        // Otherwise it's probably an arcade romset, which must stay zipped.
+        final holdsRom = entries.any((e) => Console.fromExtension(_extOf(e.name)) != null);
+        if (holdsRom) {
+          for (final entry in entries) {
+            writers[p.basename(entry.name)] = (dest) => dest.writeAsBytes(entry.content as List<int>, flush: true);
+          }
+        } else {
+          if (f.path != null) originals[f.name] = f.path!;
+          writers[f.name] = (dest) => dest.writeAsBytes(bytes, flush: true);
         }
       } else {
         if (f.path != null) originals[f.name] = f.path!;
@@ -80,21 +91,27 @@ class NativeLibrary implements GameLibrary {
       bios.add(name);
     }
 
-    final classified = await classifyFiles(writers.keys.toList(), resolve);
+    final classified = await classifyFiles(writers.keys.toList(), resolve, paths: originals, sniff: sniffDisc);
     final notes = <String>[];
 
-    // Switch games are linked where they are, never copied (they're huge).
-    final switchNames = [for (final e in classified.entries) if (e.value.external) e.key];
-    classified.removeWhere((name, c) => c.external);
-    if (switchNames.isNotEmpty) {
-      final sw = SwitchSupport.instance;
-      final linkable = [for (final n in switchNames) if (originals[n] != null) originals[n]!];
-      if (!sw.supported) {
-        notes.add(sw.unsupportedReason);
-      } else if (Platform.isAndroid || linkable.isEmpty) {
-        notes.add('Add Switch games from Settings → Add Switch games');
-      } else {
-        added.addAll(await sw.linkFiles(linkable));
+    // Systems played in another emulator: link the files where they are,
+    // never copy them (PS2/Switch/Xbox games are many GB).
+    final external = {for (final e in classified.entries) if (e.value.launchesExternally) e.key: e.value};
+    classified.removeWhere((name, c) => c.launchesExternally);
+    if (external.isNotEmpty) {
+      final ext = ExternalSupport.instance;
+      final unsupported = {for (final c in external.values) if (!ext.supports(c)) c};
+      for (final c in unsupported) {
+        notes.add(ext.unsupportedReason(c));
+      }
+      final linkable = {
+        for (final MapEntry(key: n, value: c) in external.entries)
+          if (ext.supports(c) && originals[n] != null) originals[n]!: c,
+      };
+      if (Platform.isAndroid && external.values.any(ext.supports)) {
+        notes.add('Large games aren\'t copied: use Settings → Add games without copying');
+      } else if (linkable.isNotEmpty) {
+        added.addAll(await ext.linkFiles(linkable));
       }
     }
 
@@ -102,7 +119,8 @@ class NativeLibrary implements GameLibrary {
       final dest = File(p.join(paths.romsFor(console), name));
       await writers[name]!(dest);
       final ext = p.extension(name).replaceFirst('.', '').toLowerCase();
-      if (!Console.companions.contains(ext) || console != Console.ps1) {
+      final isTrack = Console.companions.contains(ext) && classified.keys.any((n) => const {'cue', 'ccd', 'm3u'}.contains(_extOf(n)));
+      if (!isTrack) {
         added.add(Game(title: Game.titleFromFile(name), console: console, fileName: name, path: dest.path));
       }
     }
@@ -113,7 +131,7 @@ class NativeLibrary implements GameLibrary {
   @override
   Future<void> remove(Game game) async {
     if (game.folder != null) return; // lives in a linked folder; never delete the user's file
-    if (game.console.external) return SwitchSupport.instance.forget(game); // never delete the user's file
+    if (game.console.launchesExternally) return ExternalSupport.instance.forget(game); // never delete the user's file
     final path = game.path;
     if (path == null) return;
     final file = File(path);
@@ -185,6 +203,11 @@ class NativeLibrary implements GameLibrary {
 
   static const _maxFiles = 50000;
 
+  static String _extOf(String name) => p.extension(name).replaceFirst('.', '').toLowerCase();
+
+  /// PS3 games are folders (PS3_GAME/USRDIR/EBOOT.BIN), not files.
+  final _ps3Eboot = RegExp(r'[/\\]PS3_GAME[/\\]USRDIR[/\\]EBOOT\.BIN$', caseSensitive: false);
+
   Future<FolderScan> _scanPaths(String root) async {
     final paths = <String>[];
     try {
@@ -199,7 +222,16 @@ class NativeLibrary implements GameLibrary {
     } catch (_) {
       // Folder vanished or became unreadable; show what we got.
     }
-    return classifyFolderPaths(paths);
+    // Pull out PS3 game folders first; nothing inside them is a separate game.
+    final ps3Roots = <String>{
+      for (final f in paths)
+        if (_ps3Eboot.hasMatch(f)) p.dirname(p.dirname(p.dirname(f))),
+    };
+    if (ps3Roots.isNotEmpty) {
+      paths.removeWhere((f) => ps3Roots.any((r) => p.isWithin(r, f)));
+    }
+    final scan = await classifyFolderPaths(paths, sniff: sniffDisc);
+    return FolderScan({...scan.games, for (final r in ps3Roots) r: Console.ps3}, scan.skipped);
   }
 
   Future<List<Game>> _scanFolder(String root) async {

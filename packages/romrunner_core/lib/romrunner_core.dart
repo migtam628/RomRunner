@@ -75,6 +75,8 @@ final _setAudioEnabled = _lib.lookupFunction<_VoidIntC, _VoidInt>('rr_set_audio_
 final _reset = _lib.lookupFunction<_VoidVoidC, _VoidVoid>('rr_reset');
 final _setButton = _lib.lookupFunction<Void Function(Int32, Int32, Int32), void Function(int, int, int)>('rr_set_button');
 final _setButtons = _lib.lookupFunction<Void Function(Int32, Uint32), void Function(int, int)>('rr_set_buttons');
+final _setPointer =
+    _lib.lookupFunction<Void Function(Int32, Int32, Int32), void Function(int, int, int)>('rr_set_pointer');
 final _copyFrame = _lib.lookupFunction<
     Int64 Function(Pointer<Uint8>, Int32, Pointer<Int32>, Pointer<Int32>),
     int Function(Pointer<Uint8>, int, Pointer<Int32>, Pointer<Int32>)>('rr_copy_frame');
@@ -143,6 +145,11 @@ class RomRunnerCore {
   void setButton(RetroButton b, bool pressed, {int port = 0}) =>
       _setButton(port, b.id, pressed ? 1 : 0);
   void setButtons(int mask, {int port = 0}) => _setButtons(port, mask);
+
+  /// Touch/mouse position as fractions of the frame (0..1), e.g. for the
+  /// DS touchscreen. [down] false releases it.
+  void setPointer(double fx, double fy, bool down) =>
+      _setPointer(((fx * 2 - 1) * 0x7fff).round(), ((fy * 2 - 1) * 0x7fff).round(), down ? 1 : 0);
 
   void saveState(String path) => _check(_withStr(path, _saveState));
   void loadState(String path) => _check(_withStr(path, _loadState));

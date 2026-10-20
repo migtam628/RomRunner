@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -17,12 +18,16 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Hosts the "romrunner/switch" channel used to hand Switch games to an
- * installed emulator (Eden, Citron, ...). Games are picked with the system
- * document picker and RomRunner keeps persistent read access to them, so
- * multi-GB files are never copied. Launching sends ACTION_VIEW with a
- * one-time read grant for that file, which Yuzu-family emulators accept
- * (EmulationActivity has a VIEW filter for content:// octet-stream).
+ * "romrunner/external" hands games for systems RomRunner doesn't emulate
+ * (PS2, Switch, GameCube, PSP ...) to the emulator app the user installed.
+ * The intent for each emulator (component, action, extras) comes from the
+ * Dart catalog (external_catalog.dart, derived from ES-DE). Games are
+ * either picked with the system document picker (RomRunner keeps
+ * persistent read access, so multi-GB files are never copied) or found in
+ * game folders and shared through GameFileProvider. Either way the
+ * emulator gets a one-time read grant for that one file.
+ *
+ * "romrunner/storage" asks for the access needed to scan game folders.
  */
 class MainActivity : FlutterActivity() {
     private var pendingPick: MethodChannel.Result? = null
@@ -32,10 +37,10 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "emulators" -> result.success(findEmulators())
+                "installed" -> result.success(installed(call.argument<List<String>>("packages") ?: emptyList()))
+                "switchHandlers" -> result.success(findSwitchHandlers())
                 "pickGames" -> pickGames(result)
-                "launch" -> launch(call.argument<String>("package")!!, Uri.parse(call.argument<String>("uri")!!), result)
-                "launchFile" -> launchFile(call.argument<String>("package")!!, call.argument<String>("path")!!, result)
+                "launch" -> launch(call, result)
                 "release" -> {
                     release(call.argument<String>("uri")!!)
                     result.success(null)
@@ -93,14 +98,18 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun gameIntent(uri: Uri) = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, MIME)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        clipData = ClipData.newRawUri("game", uri)
+    /** Which of [packages] are installed, with their labels. */
+    private fun installed(packages: List<String>): List<Map<String, String>> = packages.distinct().mapNotNull { pkg ->
+        try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            mapOf("id" to pkg, "label" to packageManager.getApplicationLabel(info).toString())
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
     }
 
     /** Apps that open content:// game files and look like Switch emulators. */
-    private fun findEmulators(): List<Map<String, String>> {
+    private fun findSwitchHandlers(): List<Map<String, String>> {
         val probe = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://romrunner.probe/game.nsp"), MIME)
         @Suppress("DEPRECATION")
         val handlers = packageManager.queryIntentActivities(probe, 0)
@@ -172,33 +181,62 @@ class MainActivity : FlutterActivity() {
         return uri.lastPathSegment?.substringAfterLast('/') ?: "game"
     }
 
-    /** A game found in a folder: share it through our FileProvider. */
-    private fun launchFile(pkg: String, path: String, result: MethodChannel.Result) {
-        val uri = try {
-            FileProvider.getUriForFile(this, "$packageName.games", java.io.File(path))
+    /**
+     * Starts an emulator with a game. Arguments: "spec" (from AndroidLaunch
+     * in Dart), plus "uri" (content:// from the picker) or "path" (a file or
+     * folder in a game folder), plus optional "inject" (Vita3K title id).
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun launch(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
+        val spec = call.argument<Map<String, Any?>>("spec")!!
+        val pkg = spec["package"] as String
+        val path = call.argument<String>("path")
+        val isDir = path != null && java.io.File(path).isDirectory
+        val uri: Uri? = try {
+            when {
+                call.argument<String>("uri") != null -> Uri.parse(call.argument<String>("uri"))
+                path != null && !isDir -> FileProvider.getUriForFile(this, "$packageName.games", java.io.File(path))
+                else -> null
+            }
         } catch (e: IllegalArgumentException) {
             result.error("no_access", "RomRunner can't share $path.", null)
             return
         }
-        launch(pkg, uri, result)
-    }
-
-    private fun launch(pkg: String, uri: Uri, result: MethodChannel.Result) {
+        val wantsData = spec["data"] as Boolean? ?: true
+        val intent = Intent(spec["action"] as String? ?: if (wantsData) Intent.ACTION_VIEW else Intent.ACTION_MAIN)
+        (spec["category"] as String?)?.let { intent.addCategory(it) }
+        if (uri != null) {
+            if (wantsData) intent.setDataAndType(uri, MIME)
+            (spec["extra"] as String?)?.let { intent.putExtra(it, uri.toString()) }
+            intent.clipData = ClipData.newRawUri("game", uri)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        if (isDir) (spec["dirExtra"] as String?)?.let { intent.putExtra(it, path) }
+        (spec["extraArray"] as String?)?.let { key ->
+            call.argument<String>("inject")?.let { intent.putExtra(key, arrayOf("-r", it)) }
+        }
+        if (spec["clearTask"] == true) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
         try {
-            val intent = gameIntent(uri)
             if (pkg == CHOOSE_EACH_TIME) {
-                startActivity(Intent.createChooser(intent, "Open Switch game with").apply {
+                startActivity(Intent.createChooser(intent, "Open game with").apply {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 })
             } else {
-                intent.setPackage(pkg)
+                val activity = spec["activity"] as String?
+                if (activity != null) {
+                    intent.component = ComponentName(pkg, if (activity.startsWith(".")) pkg + activity else activity)
+                } else {
+                    intent.setPackage(pkg)
+                }
                 startActivity(intent)
             }
             result.success(null)
         } catch (e: ActivityNotFoundException) {
             result.error("not_found", "That emulator isn't installed anymore. Choose another in Settings.", null)
         } catch (e: SecurityException) {
-            result.error("no_access", "RomRunner lost access to this file. Remove it and add it again.", null)
+            result.error("no_access", "RomRunner lost access to this file, or the emulator refused it. Remove the game and add it again.", null)
         }
     }
 
@@ -210,7 +248,7 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
-        private const val CHANNEL = "romrunner/switch"
+        private const val CHANNEL = "romrunner/external"
         private const val STORAGE_CHANNEL = "romrunner/storage"
         private const val ACCESS_REQUEST = 4202
         private const val MIME = "application/octet-stream"

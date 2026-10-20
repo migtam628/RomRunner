@@ -25,7 +25,11 @@ class CoreManager {
 
   String fileName(Console c) {
     if (Platform.isAndroid) return 'lib${c.core}_libretro_android.so';
-    if (Platform.isIOS) return c == Console.gba ? 'mgba_libretro.dylib' : '${c.core}_libretro_ios.dylib';
+    if (Platform.isIOS) {
+      if (c.core == 'mgba') return 'mgba_libretro.dylib'; // buildbot naming quirk
+      if (c.core == 'melondsds') return 'melonds_libretro_ios.dylib'; // no melonDS DS build for iOS
+      return '${c.core}_libretro_ios.dylib';
+    }
     if (Platform.isMacOS) return '${c.core}_libretro.dylib';
     if (Platform.isWindows) return '${c.core}_libretro.dll';
     return '${c.core}_libretro.so';

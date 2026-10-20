@@ -5,7 +5,7 @@ import '../input/key_mapping.dart';
 import '../models/console.dart';
 import '../models/game.dart';
 import '../services/library.dart';
-import '../services/switch_support.dart';
+import '../services/external_support.dart';
 import 'game_screen.dart';
 import 'settings_screen.dart';
 
@@ -15,6 +15,10 @@ class LibraryScreen extends StatefulWidget {
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
+
+/// Systems this build can play itself or open in an installed emulator.
+List<Console> availableSystems() =>
+    [for (final c in Console.values) if (c.playsHere || ExternalSupport.instance.supports(c)) c];
 
 class _LibraryScreenState extends State<LibraryScreen> {
   final _library = GameLibrary.instance;
@@ -44,7 +48,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         builder: (context) => SimpleDialog(
           title: Text('Which system is "$fileName" for?'),
           children: [
-            for (final c in Console.builtIn)
+            for (final c in availableSystems())
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, c),
                 child: Row(children: [
@@ -110,11 +114,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ..showSnackBar(SnackBar(content: Text(msg), action: action));
 
   Future<void> _play(Game game) async {
-    if (game.console.external) {
+    if (game.console.launchesExternally) {
       try {
-        await SwitchSupport.instance.launch(game);
+        await ExternalSupport.instance.launch(game);
         _snack('Opening ${game.title}…');
-      } on SwitchLaunchException catch (e) {
+      } on ExternalLaunchException catch (e) {
         _snack(e.message,
             action: e.needsSetup ? SnackBarAction(label: 'Settings', onPressed: _openSettings) : null);
       }
@@ -138,7 +142,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remove game?'),
-        content: Text(game.console.external
+        content: Text(game.console.launchesExternally
             ? '${game.title} will be removed from the library. The file itself stays where it is.'
             : '${game.title} will be removed from the library. Save states are kept.'),
         actions: [
@@ -171,11 +175,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
               const SizedBox(height: 20),
               Text('Systems', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
-              for (final c in Console.values)
+              for (final c in availableSystems())
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text('${c.fullName} — ${c.extensions.map((e) => '.$e').join(' ')}'
-                      '${c.external ? '' : ' (${c.core})'}'),
+                  child: Text('${c.fullName} — ${[...c.extensions, ...c.also].map((e) => '.$e').join(' ')}'
+                      '${c.playsHere ? '' : ' (opens in your emulator)'}'),
                 ),
               const SizedBox(height: 20),
               Text('Controls', style: Theme.of(context).textTheme.titleMedium),
@@ -290,8 +294,7 @@ class _EmptyState extends StatelessWidget {
             Wrap(
               spacing: 8,
               children: [
-                for (final c in Console.values)
-                  if (!c.external || SwitchSupport.instance.supported) _Dot(color: c.color, size: 14),
+                for (final c in availableSystems()) _Dot(color: c.color, size: 14),
               ],
             ),
             const SizedBox(height: 20),
@@ -299,8 +302,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Add ROMs and disc images of games you own.\n'
-              'NES · Game Boy · GBA · SNES · Genesis · PS1'
-              '${SwitchSupport.instance.supported ? ' · Switch' : ''}',
+              '${availableSystems().length} systems, from NES and Atari to '
+              '${ExternalSupport.instance.supports(Console.ps2) ? 'PS2 and Switch' : 'DS and PlayStation'}. See ⓘ for the list.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),

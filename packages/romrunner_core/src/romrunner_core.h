@@ -49,6 +49,10 @@ RR_EXPORT void rr_set_button(int port, int id, int pressed);
 // Set all 16 buttons of a port at once as a bitmask (bit n = button n).
 RR_EXPORT void rr_set_buttons(int port, uint32_t mask);
 
+// Touchscreen / pointer for port 0, in libretro coordinates: -32767..32767
+// across the whole frame (top-left = -32767,-32767). Used by DS games.
+RR_EXPORT void rr_set_pointer(int32_t x, int32_t y, int pressed);
+
 // Copy the latest frame as RGBA8888 into dst (capacity in bytes).
 // Returns the frame counter (increments each new frame), or -1 if none yet.
 RR_EXPORT int64_t rr_copy_frame(uint8_t* dst, int32_t capacity, int32_t* width, int32_t* height);

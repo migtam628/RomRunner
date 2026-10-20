@@ -226,6 +226,8 @@ static struct {
 
   // Input
   volatile uint32_t buttons[4];
+  // Touch/mouse (e.g. DS touchscreen), libretro coordinates -0x7fff..0x7fff.
+  volatile int pointer_x, pointer_y, pointer_down;
 
   // Loop
   rr_mutex_t core_mutex;
@@ -500,7 +502,22 @@ static void RETRO_CALLCONV input_poll_cb(void) {}
 static int16_t RETRO_CALLCONV input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
   (void)index;
   if (port >= 4) return 0;
-  if ((device & RETRO_DEVICE_MASK) != RETRO_DEVICE_JOYPAD) return 0;
+  unsigned base = device & RETRO_DEVICE_MASK;
+  if (base == RETRO_DEVICE_POINTER && port == 0) {
+    switch (id) {
+      case RETRO_DEVICE_ID_POINTER_X: return (int16_t)g.pointer_x;
+      case RETRO_DEVICE_ID_POINTER_Y: return (int16_t)g.pointer_y;
+      case RETRO_DEVICE_ID_POINTER_PRESSED: return index == 0 ? (int16_t)g.pointer_down : 0;
+      case RETRO_DEVICE_ID_POINTER_COUNT: return g.pointer_down ? 1 : 0;
+      default: return 0;
+    }
+  }
+  if (base == RETRO_DEVICE_MOUSE && port == 0) {
+    // Some cores read the touchscreen as an absolute mouse.
+    if (id == RETRO_DEVICE_ID_MOUSE_LEFT) return (int16_t)g.pointer_down;
+    return 0;
+  }
+  if (base != RETRO_DEVICE_JOYPAD) return 0;
   uint32_t b = g.buttons[port];
   if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t)(b & 0xFFFF);
   if (id > 15) return 0;
@@ -850,6 +867,16 @@ void rr_set_button(int port, int id, int pressed) {
 void rr_set_buttons(int port, uint32_t mask) {
   if (port < 0 || port > 3) return;
   g.buttons[port] = mask & 0xFFFF;
+}
+
+void rr_set_pointer(int32_t x, int32_t y, int pressed) {
+  if (x < -0x7fff) x = -0x7fff;
+  if (x > 0x7fff) x = 0x7fff;
+  if (y < -0x7fff) y = -0x7fff;
+  if (y > 0x7fff) y = 0x7fff;
+  g.pointer_x = x;
+  g.pointer_y = y;
+  g.pointer_down = pressed ? 1 : 0;
 }
 
 int64_t rr_copy_frame(uint8_t* dst, int32_t capacity, int32_t* width, int32_t* height) {

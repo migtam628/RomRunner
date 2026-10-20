@@ -280,6 +280,33 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                     ),
                   ),
                 ),
+              // DS touchscreen: taps and drags on the game image become pointer
+              // input. Sits above the touch pad and covers only the frame.
+              if (_running && _console.touchscreen)
+                Positioned.fill(
+                  child: SafeArea(
+                    child: Align(
+                      alignment: portrait && _touchVisible ? Alignment.topCenter : Alignment.center,
+                      child: AspectRatio(
+                        aspectRatio: _aspect,
+                        child: LayoutBuilder(
+                          builder: (context, box) {
+                            void send(Offset pos, bool down) => _core.setPointer(
+                                (pos.dx / box.maxWidth).clamp(0.0, 1.0), (pos.dy / box.maxHeight).clamp(0.0, 1.0), down);
+                            return Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (e) => send(e.localPosition, true),
+                              onPointerMove: (e) => send(e.localPosition, true),
+                              onPointerUp: (e) => send(e.localPosition, false),
+                              onPointerCancel: (e) => send(e.localPosition, false),
+                              child: const SizedBox.expand(),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (_running)
                 SafeArea(
                   child: Align(

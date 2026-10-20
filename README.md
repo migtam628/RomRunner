@@ -1,170 +1,237 @@
 # RomRunner
 
-A ROM emulator front end for **Android, Fire TV, iOS, macOS, Windows, Linux and web**, built in Flutter on top of [libretro](https://www.libretro.com/) emulation cores.
+[![CI](https://github.com/migtam628/RomRunner/actions/workflows/ci.yml/badge.svg)](https://github.com/migtam628/RomRunner/actions/workflows/ci.yml)
 
-| System | Extensions | Core |
+Play your own retro game ROMs on **Android, Fire TV, iOS, macOS, Windows, Linux and the web** from one app. RomRunner is a Flutter front end on top of [libretro](https://www.libretro.com/) emulation cores. It also keeps Nintendo Switch games in the same library and opens them in a Switch emulator you install separately.
+
+---
+
+## Download
+
+Every build comes from GitHub Actions; get it from **[Releases](https://github.com/migtam628/RomRunner/releases)**.
+
+| Platform | File | Install |
 |---|---|---|
-| NES / Famicom Disk System | .nes .unf .fds | FCEUmm |
-| Game Boy / Color | .gb .gbc | Gambatte |
-| Game Boy Advance | .gba | mGBA |
-| SNES | .sfc .smc | Snes9x |
-| Genesis / Mega Drive / Master System / Game Gear | .md .gen .smd .sms .gg | Genesis Plus GX |
-| PlayStation | .cue+.bin .chd .pbp .m3u | PCSX-ReARMed |
+| Android phones and tablets, Fire TV | `RomRunner-<ver>-android.apk` | Sideload. Fire TV: turn on *Developer options → ADB debugging* and *Install unknown apps*, then `adb connect <tv-ip>` and `adb install -r RomRunner-<ver>-android.apk`. It appears in the Fire TV launcher. |
+| Windows | `RomRunner-<ver>-windows-x64.zip` | Unzip and run `RomRunner.exe`. Cores included. |
+| macOS | `RomRunner-<ver>-macos.zip` | Unzip, then right-click the app → **Open** the first time (not notarized). Cores download on first game. |
+| Linux | `RomRunner-<ver>-linux-x64.tar.gz` | Extract and run `./romrunner`. Needs GTK 3. Cores included. |
+| iOS | `RomRunner-<ver>-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore. |
+| Web | `RomRunner-<ver>-web.zip` | Serve the folder over HTTP(S). Needs internet (EmulatorJS loads from its CDN). |
 
-| Nintendo Switch | .nsp .xci .nro | *Your installed Switch emulator* (see below) |
+`SHA256SUMS.txt` on each release has checksums.
 
-`.zip` files are unpacked on import.
+---
 
-**Game folders.** Instead of importing, you can point RomRunner at folders (**Add folder** in the library, or **Settings → Game folders**). Games stay where they are, subfolders included, and the folders are rescanned each time the library opens. Ambiguous `.bin` files are assigned by folder name (`Genesis/`, `Mega Drive/`, `PS1/`, `PSX/` …). A cue sheet's tracks are kept with it, and hidden folders are ignored. Android asks once for "All files access". On Fire TV models without a folder picker you can type the path instead. In the browser, picking a folder is a one-time import for that tab. iOS doesn't let apps keep access to folders, so it uses Add ROMs. Lone `.bin` files ask which system they belong to.
+## Systems
 
-## How it fits together
+| System | Files | Emulated by |
+|---|---|---|
+| NES / Famicom Disk System | `.nes` `.unf` `.fds` | FCEUmm |
+| Game Boy / Game Boy Color | `.gb` `.gbc` | Gambatte |
+| Game Boy Advance | `.gba` | mGBA |
+| SNES | `.sfc` `.smc` | Snes9x |
+| Genesis / Mega Drive / Master System / Game Gear | `.md` `.gen` `.smd` `.sms` `.gg` (and `.bin`) | Genesis Plus GX |
+| PlayStation | `.cue`+`.bin` `.chd` `.pbp` `.m3u` | PCSX-ReARMed |
+| Nintendo Switch | `.nsp` `.xci` `.nro` | Your installed Switch emulator ([details](#nintendo-switch)) |
 
-```
- Flutter UI (lib/)                 one codebase, all 7 targets
-   ├─ library, pause menu, touch pad, TV focus
-   ├─ native targets ──► romrunner_core (C, FFI plugin)
-   │                       ├─ dlopen()s a libretro core
-   │                       ├─ emulation thread, audio-paced (miniaudio)
-   │                       ├─ converts frames to RGBA, Dart paints them each vsync
-   │                       └─ input bitmask, save states, battery saves
-   └─ web target ─────► EmulatorJS iframe (same libretro cores, built to WASM)
-```
+### What works where
 
-Dart never touches audio or the emulation loop, so a slow UI frame never stutters the game.
+| | Android | Fire TV | iOS | macOS | Windows | Linux | Web |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| NES · GB · GBA · SNES · Genesis | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| PS1 | ✓ | ✓ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ ² |
+| Switch (via installed emulator) | ✓ ³ | – | – | ✓ ⁴ | ✓ | ✓ | – |
+| Game folders (linked) | ✓ | ✓ | – | ✓ | ✓ | ✓ | import only |
+| Touch controls | ✓ | – | ✓ | – | – | – | EmulatorJS |
+| Gamepads | ✓ | ✓ | – | – | – | – | ✓ |
+| TV remote | ✓ | ✓ | – | – | – | – | – |
 
-## Layout
+¹ Interpreter only (iOS forbids JIT), slower on older iPhones. ² Single-file `.chd` or `.pbp`. ³ Recent Snapdragon 8-series phones. ⁴ Ryujinx-based builds.
 
-```
-app/                      Flutter app (runners for all platforms already generated and patched)
-  lib/models/             consoles, games, RetroPad buttons
-  lib/services/           ROM library, core download/lookup, app folders
-  lib/screens/            library, native game screen, web game screen
-  lib/widgets/            touch controller, pause menu
-  lib/input/              keyboard / gamepad / TV-remote bindings
-  ios/embed_cores.sh      Xcode build phase that embeds + signs cores
-packages/romrunner_core/    FFI plugin: the C libretro host
-  src/romrunner_core.c      the bridge (one file)
-  test/headless.c         headless test harness
-tool/fetch_cores.sh       downloads prebuilt cores per platform
-tool/test_bridge.sh       builds the bridge headless and runs a ROM through a core
-```
+---
 
-## Build and run
+## Adding games
 
-Requires Flutter 3.24+ (built and tested with 3.47). From `app/`, run `flutter pub get` once.
+- **Add ROMs** copies files into RomRunner's library. `.zip` files are unpacked. A lone `.bin` asks which system it belongs to, and a `.cue` sheet keeps its `.bin` tracks together.
+- **Add folder** (folder icon in the library, or **Settings → Game folders**) links a folder instead of copying it:
+  - Games stay where they are, subfolders included. The folder is rescanned every time the library opens, so new games just appear.
+  - Ambiguous `.bin` files are assigned by folder name, e.g. `Genesis/`, `Mega Drive/`, `PS1/`, `PSX/`.
+  - Hidden folders and macOS `._` files are ignored. Archives are skipped and counted; unzip them with Add ROMs.
+  - Removing a folder only hides its games. RomRunner never deletes files from linked folders.
+  - **Android** asks once for *All files access*. **Fire TV** models without a folder picker let you type a path instead (e.g. `/storage/emulated/0/ROMs`).
+  - **Web:** picking a folder imports its games into that browser tab for the session.
+  - **iOS** doesn't let apps keep folder access between launches, so it uses Add ROMs.
+- **BIOS files** (optional) go in through Add ROMs like a game: `scph5501.bin`, `gba_bios.bin` and so on are recognised and installed into the BIOS folder automatically. PS1 runs without a BIOS, but compatibility is better with one.
 
-**macOS / Windows / Linux** — cores download automatically the first time you start a game of each system (from the libretro buildbot, into the app's support folder).
-```
-flutter run -d macos      # or windows / linux
-```
-Offline machine: `tool/fetch_cores.sh macos|linux|windows` first. On Linux you need `libgtk-3-dev`, `clang`, `ninja-build`, `pkg-config`. The macOS app is built without the App Sandbox so it can load downloaded cores (fine for personal use).
+## Playing
 
-**Android phone/tablet and Fire TV** — cores are packaged inside the APK.
-```
-../tool/fetch_cores.sh android     # arm64-v8a + armeabi-v7a (32-bit Fire OS)
-flutter build apk --release
-adb install -r build/app/outputs/flutter-apk/app-release.apk
-```
-For Fire TV: enable *Developer options → ADB debugging* and *Install unknown apps*, then `adb connect <fire-tv-ip>` before `adb install`. The app shows up in the Fire TV launcher (leanback banner included).
+- **Pause menu:** Esc, the gamepad Guide button, the TV Back button, or the ⏸ button. It has 4 save-state slots, fast-forward (4×), reset and quit. On web, EmulatorJS has its own menu and save states, and in-game saves stay in the browser.
+- **Battery saves** (`.srm`) are written about every 10 seconds and when you quit.
+- **Touch controls** appear on phones and tablets, with a layout per system. They hide once a controller or keyboard is used; the pause menu brings them back.
 
-**iOS (sideload)** — cores are embedded in the app bundle by an Xcode build phase that is already added.
-```
-../tool/fetch_cores.sh ios
-open ios/Runner.xcworkspace     # set your Team under Signing, then Run on your device
-```
-iOS does not allow JIT, so PS1 runs on its interpreter there (set automatically); fine on recent iPhones, slower on old ones.
+### Controls
 
-**Web**
-```
-flutter build web --release
-cd build/web && python3 -m http.server 8080
-```
-Games run through EmulatorJS loaded from its CDN, so the page needs internet. ROMs stay in the browser tab; nothing is uploaded. PS1 on web needs single-file `.chd` or `.pbp`.
-
-## Releases (GitHub Actions)
-
-`.github/workflows/release.yml` builds all seven targets and publishes a GitHub Release when you push a version tag:
-
-```
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-A tag with a dash (`v0.2.0-beta.1`) becomes a pre-release. To test the pipeline without publishing, open **Actions → Release → Run workflow** (or push a branch named `release-test/anything`); the builds appear as downloadable artifacts on that run.
-
-| Asset | Contents |
-|---|---|
-| `RomRunner-<ver>-android.apk` | Phones, tablets and Fire TV (arm64 + 32-bit ARM), cores included |
-| `RomRunner-<ver>-windows-x64.zip` | Unzip and run `RomRunner.exe`, cores included |
-| `RomRunner-<ver>-linux-x64.tar.gz` | Extract and run `./romrunner`, cores included |
-| `RomRunner-<ver>-macos.zip` | Universal app, not notarized (right-click → Open the first time); cores download on first use |
-| `RomRunner-<ver>-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore |
-| `RomRunner-<ver>-web.zip` | Static site; serve it over HTTP(S) |
-| `SHA256SUMS.txt` | Checksums |
-
-**Android signing (do this once before the first real release).** Without it, each release APK is signed with a different throwaway key, and Android refuses to install it over the previous version. On a machine with a JDK and `gh` logged in, run `tool/android_signing.sh`. It creates `~/romrunner-release.jks` and stores it in the repo's Actions secrets. Keep that file backed up and out of the repo.
-
-`.github/workflows/ci.yml` runs on every push and pull request: `flutter analyze` and `flutter test`, a warnings-as-errors compile of the C bridge, and a headless run of the bridge against the Gambatte core with the `cpu_instrs` test ROM.
-
-## Controls
-
-| | Keyboard | Gamepad (Android/Fire TV) | Fire TV remote |
+| | Keyboard | Gamepad (Android / Fire TV) | Fire TV remote |
 |---|---|---|---|
 | D-pad | Arrows | D-pad | D-pad |
 | A / B | X / Z | right / bottom face button | Center = A |
-| X / Y | S / A | top / left face button | — |
-| L / R (L2 / R2) | Q / W (1 / 3) | shoulders / triggers | — |
+| X / Y | S / A | top / left face button | – |
+| L / R · L2 / R2 | Q / W · 1 / 3 | shoulders · triggers | – |
 | Start / Select | Enter / Backspace | Start / Select | Play-Pause / Menu |
 | Pause menu | Esc | Guide | Back |
-| Fast-forward (4×) | Tab | — | Fast-forward key |
+| Fast-forward | Tab | – | Fast-forward |
 
-Phones show a multi-touch pad (layout changes per system). It hides itself once a controller or keyboard is used; the pause menu brings it back.
+---
 
 ## Nintendo Switch
 
-RomRunner doesn't emulate Switch itself: no libretro core exists, and the working emulators are large standalone apps. Instead, Switch games sit in the library like everything else and open in a Switch emulator you install and set up separately, with keys and firmware dumped from your own console.
+RomRunner doesn't emulate Switch itself. No libretro core exists, and the working emulators are large standalone apps. Instead, Switch games sit in the library like everything else and open fullscreen in a Switch emulator you install and set up separately, with keys and firmware dumped from your own console.
 
-| Platform | Works with | Notes |
+| Platform | Emulators | How RomRunner finds it |
 |---|---|---|
-| Windows, Linux | Eden, Citron, Ryujinx/Ryubing | Auto-detected on `PATH` (and AppImages in `~`, `~/Downloads`, `~/Applications` on Linux), or **Browse…** |
-| macOS | Ryujinx-based builds | Detected in `/Applications`; Eden/Citron have no official macOS build |
-| Android | Eden, Citron (any Yuzu-family app) | Needs a recent Snapdragon 8-series phone; detected automatically |
-| iOS, Fire TV, web | — | Not possible: no JIT on iOS, too little GPU on Fire TV, no browser support |
+| Windows, Linux | Eden, Citron, Ryujinx / Ryubing | On `PATH`; Linux also checks for AppImages in `~`, `~/Downloads`, `~/Applications`. Or **Browse…** |
+| macOS | Ryujinx-based builds | In `/Applications` or `~/Applications`, or **Browse…** |
+| Android | Eden, Citron (Yuzu-family apps) | Installed apps that accept game files; or "Ask each time" |
+| iOS, Fire TV, web | – | Not possible (no JIT on iOS, not enough GPU on Fire TV, no browser support) |
 
-How it works:
+1. Install the emulator and get it running a game on its own first.
+2. In RomRunner, open **Settings → Nintendo Switch** and pick the emulator.
+3. Add games with **Add Switch games**, a **game folder**, or (desktop) **Add ROMs**.
 
-- **Settings → Nintendo Switch** picks the emulator and has **Add Switch games**.
-- Games are **linked, never copied**. On desktop, RomRunner stores the file path. On Android, it keeps read access through the system file picker.
-- Playing a game starts the emulator fullscreen with that game: `-f -g <game>` for Yuzu-family emulators, `<game> --fullscreen` for Ryujinx. On Android, RomRunner sends the game to the emulator with a one-time read grant.
-- Removing a Switch game from the library never deletes the file.
-- On desktop, **Add ROMs** also accepts `.nsp`/`.xci` and links them. On Android, use **Add Switch games** so multi-GB files aren't copied.
+Switch games are **linked, never copied**, since they're often 5–20 GB. RomRunner launches Yuzu-family emulators with `-f -g <game>` and Ryujinx with `<game> --fullscreen`. On Android it sends the file to the emulator with a one-time read grant. Removing a Switch game from the library never deletes the file.
 
-## Saves and BIOS
+---
 
-- Battery saves (`.srm`) are written automatically every ~10 s and on exit.
-- Four save-state slots per game in the pause menu.
-- BIOS files are optional. Add them through **Add ROMs** like any game (`scph5501.bin`, `gba_bios.bin`, …) and they're installed into the system folder automatically. The ⓘ sheet shows every folder path.
+## Where RomRunner keeps files
 
-## What was verified while building this
+| Platform | Folder |
+|---|---|
+| macOS | `~/Library/Application Support/com.mttech.romrunner/` |
+| Windows | `%APPDATA%\com.mttech\RomRunner\` |
+| Linux | `~/.local/share/com.mttech.romrunner/` |
+| Android, iOS | The app's private storage |
 
-- The C bridge built and ran real cores headless on Linux: NES (FCEUmm), Game Boy (Gambatte — passes Blargg's `cpu_instrs`), GBA (mGBA), SNES (Snes9x), Genesis (Genesis Plus GX), PS1 (PCSX-ReARMed). Save/load state, threaded 60 fps pacing, 4× fast-forward, pause, and core unload/reload all checked.
-- The Flutter app built for Linux and web; the Linux build was run end to end (library → game → pause menu).
-- `flutter analyze` is clean and `flutter test` passes.
-- All 48 core download URLs (6 cores × 8 platform/arch combos) return 200 on the buildbot.
+Inside: `roms/` (imported games, one folder per system), `saves/` (battery saves), `states/` (save states), `system/` (BIOS), `cores/` (downloaded cores, desktop), `folders.json` (linked folders) and `switch.json` (Switch emulator and linked games). The ⓘ button in the app shows the exact paths.
 
-Not verified (no hardware here): Android, Fire TV, iOS, macOS and Windows builds, and real audio output. The platform files were generated by `flutter create` and then patched, so they should build, but expect a first-run fix or two.
+---
 
-**PS1 note:** in the Linux test VM the PS1 core's dynarec crashed on homebrew `.exe` test programs, while its interpreter ran them fine. That's most likely the VM or the BIOS-less EXE path rather than real discs, but if PS1 games crash on a device, set the interpreter the same way iOS does (one line in `game_screen_native.dart`).
+## Releases and CI
 
-## Next steps worth doing
+All packaging happens on GitHub Actions.
 
-1. Return to RomRunner automatically when the Switch emulator exits (desktop).
-2. Gamepads on iOS/macOS/Windows/Linux (the `gamepads` package; Android/Fire TV already work).
-3. Core options UI (region, palette, renderer settings) — the bridge already supports `rr_set_option`.
-4. Box art via the libretro thumbnails repo, recent/favorites rows.
-5. Rewind and shaders (CRT/LCD) — the frame painter is the hook for shaders.
-6. Upload to the GPU via a texture instead of decoding an image per frame (only matters for high-res PS1 modes).
+**Publish a release:** push a version tag. About 20 minutes later, a GitHub Release appears with every file in the [Download](#download) table.
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+- A tag with a dash, like `v0.2.0-beta.1`, is published as a pre-release.
+- **Dry run** (build everything, publish nothing): **Actions → Release → Run workflow**, or push any branch named `release-test/<anything>`. The builds can be downloaded from that run.
+- **CI** (`.github/workflows/ci.yml`) runs on every push and pull request. It runs `flutter analyze` and `flutter test`, compiles the C bridge with warnings as errors, and runs a headless check of the bridge against the Gambatte core with Blargg's `cpu_instrs` test ROM.
+
+### Android signing (one time)
+
+Without a signing key in the repo secrets, each release APK is signed with a throwaway key, and Android won't install a new version over an old one. To set it up without installing anything locally:
+
+1. On the repo page: **Code → Codespaces → Create codespace on main**.
+2. In its terminal:
+   ```bash
+   unset GITHUB_TOKEN
+   gh auth login                     # GitHub.com → HTTPS → Login with a web browser
+   java -version || (sudo apt-get update && sudo apt-get install -y openjdk-17-jdk-headless)
+   bash tool/android_signing.sh      # choose a password (hidden while typing)
+   gh secret list --repo migtam628/RomRunner   # expect four ANDROID_… secrets
+   ```
+3. Back up the key, then delete the Codespace:
+   ```bash
+   cp ~/romrunner-release.jks /workspaces/RomRunner/   # right-click it in the file list → Download
+   rm /workspaces/RomRunner/romrunner-release.jks
+   ```
+   Keep the `.jks` file and its password somewhere safe. If you lose them, devices have to uninstall RomRunner before they can install updates. `.gitignore` already blocks `.jks` files from being committed.
+
+---
+
+## How it works
+
+```
+ Flutter UI (app/lib)                one codebase, all 7 targets
+   ├─ library, folders, settings, pause menu, touch pad, TV focus
+   ├─ native targets ──► romrunner_core (C, FFI plugin)
+   │                       ├─ dlopen()s a libretro core
+   │                       ├─ emulation thread, audio-paced (miniaudio)
+   │                       ├─ converts frames to RGBA; Dart paints them each vsync
+   │                       └─ input bitmask, save states, battery saves
+   ├─ web target ─────► EmulatorJS iframe (the same libretro cores, built to WASM)
+   └─ Switch ─────────► launches the user's installed emulator (process / Android intent)
+```
+
+The emulation loop and audio run natively, so a slow UI frame never stutters the game.
+
+### Project layout
+
+```
+.github/workflows/      ci.yml (checks), release.yml (all platforms → GitHub Release)
+app/                    Flutter app, with runners for all 7 platforms
+  lib/models/           systems, games, RetroPad buttons
+  lib/services/         library (native/web), game folders, core download, Switch launcher, app folders
+  lib/screens/          library, settings, game screen (native and web)
+  lib/widgets/          touch controller, pause menu
+  lib/input/            keyboard / gamepad / TV-remote bindings
+  android/…/MainActivity.kt   Switch handoff, storage access, file provider
+  ios/embed_cores.sh    Xcode build phase that embeds and signs cores
+packages/romrunner_core/  FFI plugin: the C libretro host
+  src/romrunner_core.c    the bridge (one file, rr_* API)
+  test/headless.c         headless test harness
+tool/fetch_cores.sh     downloads prebuilt cores from the libretro buildbot, per platform
+tool/test_bridge.sh     builds the bridge headless and runs a ROM through a core
+tool/android_signing.sh creates the Android release key and stores it in repo secrets
+```
+
+### Building locally (optional)
+
+Not needed for releases, but useful for development. Requires Flutter 3.24+; CI uses 3.47.7.
+
+```bash
+cd app && flutter pub get
+flutter run -d macos                     # or windows / linux; cores download on first game
+../tool/fetch_cores.sh android && flutter build apk --release
+../tool/fetch_cores.sh ios && open ios/Runner.xcworkspace   # set your signing team, then run
+flutter build web --release
+```
+
+Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge alone with `tool/test_bridge.sh <core> <rom> [frames]`, which writes `frame.ppm`.
+
+---
+
+## Status
+
+**Tested:**
+- **Every push:** GitHub Actions builds all seven platforms.
+- **C bridge:** ran real cores headless for NES, GB (passes `cpu_instrs`), GBA, SNES, Genesis and PS1. Save states, 60 fps pacing, fast-forward, pause and core reload all work.
+- **Linux app, end to end:** library, playing a game, pause menu, game folders, and Switch launching (checked against a stand-in emulator that records its arguments).
+- **Web app in Chromium:** importing ROMs and folders, and full-window play.
+
+**Not yet tested on real hardware:** Android phones, Fire TV, iOS and Windows builds, audio output, and real Switch emulators with real games. On macOS, the app has been run and the file-picker issue it showed is fixed; nothing else has been checked there yet.
+
+### Known limitations
+
+- **PS1 crashes:** in the Linux test VM, the PS1 core's fast (dynarec) mode crashed on homebrew `.exe` test programs, while its interpreter ran them fine. If PS1 games crash on a device, switch to the interpreter (one line in `game_screen_native.dart`, the same way iOS does).
+- **Desktop gamepads:** not supported yet on iOS, macOS, Windows or Linux. Android and Fire TV gamepads work.
+- **Zips in game folders:** these are skipped; unzip them with Add ROMs.
+- **macOS:** the app isn't notarized, and it ships without the App Sandbox so it can load downloaded cores.
+
+### Roadmap
+
+1. Gamepads on iOS, macOS, Windows and Linux.
+2. Core options UI (region, palette, renderer); the bridge already supports `rr_set_option`.
+3. Box art from the libretro thumbnails repo, plus recent and favorite rows.
+4. Return to RomRunner automatically when the Switch emulator exits (desktop).
+5. Rewind, and CRT/LCD shaders.
+6. GPU texture upload instead of per-frame image decode (matters for high-res PS1).
+
+---
 
 ## Legal
 
-Use ROMs, disc images and BIOS files you dumped from games and hardware you own. The libretro cores and EmulatorJS are GPL-licensed: personal and sideloaded use is fine, but publishing to an app store requires GPL compliance (source availability) and store review of emulators varies by platform.
+RomRunner doesn't include or download any games, BIOS files, Switch keys or firmware. Use dumps of games and hardware you own. The libretro cores and EmulatorJS are GPL-licensed: personal and sideloaded use is fine, but publishing to an app store requires GPL compliance (source availability), and stores review emulators differently.

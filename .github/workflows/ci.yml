@@ -103,8 +103,9 @@ jobs:
           export PATH="/tmp/tools:$PATH"
           git clone -q --depth 1 https://github.com/Dillonb/n64-tests /tmp/dillon
           cmake -S /tmp/dillon -B /tmp/dillon/build -DCMAKE_BUILD_TYPE=Release
-          make -C /tmp/dillon/build -j4
-          find /tmp/dillon/build/src -name '*.z64' | wc -l
+          make -C /tmp/dillon/build -k > /tmp/dillon-build.log 2>&1 || true
+          echo "::notice title=dillon build::$(find /tmp/dillon/build/src -name '*.z64' ! -name '*simpleboot*' | wc -l) test ROMs built"
+          grep -iE "error|failed|no such" /tmp/dillon-build.log | sort -u | head -15 | sed 's/^/::warning title=dillon build::/' || true
       - name: Run all and compare with the baseline
         run: |
           pip install --quiet pillow

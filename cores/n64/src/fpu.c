@@ -114,6 +114,11 @@ static int64_t to_l(N64 *n, double v, Round r) {
 static void compare(N64 *n, double a, double b, uint32_t cond) {
   bool unordered = isnan(a) || isnan(b);
   bool r = false;
+  if (unordered && (cond & 8)) {
+    /* Signaling compares raise "invalid operation" on any NaN. */
+    n->cpu.fcr31 |= (1u << 16) | (1u << 6);
+    if (n->cpu.fcr31 & (1u << 11)) { cpu_fpu_exception(n); return; }
+  }
   if (unordered) r = (cond & 1) != 0;
   else r = ((cond & 4) && a < b) || ((cond & 2) && a == b);
   if (r) n->cpu.fcr31 |= FCR31_C;

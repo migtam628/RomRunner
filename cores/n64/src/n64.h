@@ -112,12 +112,27 @@ typedef struct {
 } Si;
 
 typedef struct {
-  uint32_t mem_addr, dram_addr, rd_len, wr_len, status, semaphore, pc;
+  uint32_t mem_addr, dram_addr;   /* as written; a DMA starts from these */
+  uint32_t cur_mem, cur_dram;     /* where the last DMA got to (what reads return) */
+  uint32_t rd_len, wr_len, status, semaphore, pc;
 } SpRegs;
 
 typedef struct {
   uint32_t start, end, current, status, clock, bufbusy, pipebusy, tmem;
 } DpRegs;
+
+/* RSP: a MIPS-like scalar unit plus the vector unit (COP2). */
+typedef struct {
+  uint32_t r[32];
+  uint32_t pc, next_pc;     /* 12-bit IMEM addresses */
+  bool in_delay;
+  uint16_t vr[32][8];       /* vector registers; element 0 is the most significant */
+  int64_t acc[8];           /* 48-bit accumulators, sign-extended */
+  uint16_t vco, vcc;        /* low byte: carry / compare, high byte: not-equal / clip */
+  uint8_t vce;
+  int32_t div_in, div_out;  /* VRCP/VRSQ double-precision state */
+  bool div_dp;
+} Rsp;
 
 /* Save memory kinds (stage 4 adds the controller pak). */
 typedef enum { SAVE_NONE, SAVE_EEPROM_4K, SAVE_EEPROM_16K, SAVE_SRAM, SAVE_FLASH } SaveType;
@@ -136,6 +151,7 @@ typedef struct N64 {
   Si si;
   SpRegs sp;
   DpRegs dp;
+  Rsp rsp;
   uint32_t ri[8];
 
   uint8_t rdram[RDRAM_SIZE];   /* big-endian bytes, as on the console */
@@ -195,6 +211,11 @@ bool bus_write64(N64 *n, uint32_t pa, uint64_t v);
 void vi_tick(N64 *n, uint32_t cycles);
 void ai_tick(N64 *n, uint32_t cycles);
 #define AUDIO_RATE 44100u
+
+/* ---- RSP (rsp.c) ---- */
+void rsp_run(N64 *n, uint32_t cycles);
+uint32_t rcp_reg_read(N64 *n, uint32_t pa);
+void rcp_reg_write(N64 *n, uint32_t pa, uint32_t v);
 
 /* ---- PIF / joybus / boot (pif.c) ---- */
 void pif_hle_boot(N64 *n);

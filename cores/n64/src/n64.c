@@ -85,7 +85,13 @@ void n64_run_frame(N64 *n) {
   if (lines == 0) lines = 1;
   uint32_t per_line = frame_cycles / lines;
   for (uint32_t i = 0; i < lines; i++) {
-    cpu_run(n, per_line);
+    /* CPU (93.75 MHz) and RSP (62.5 MHz) take turns in short slices so
+     * that polling loops on either side see each other's progress. */
+    for (uint32_t done = 0; done < per_line; done += 120) {
+      uint32_t slice = per_line - done < 120 ? per_line - done : 120;
+      cpu_run(n, slice);
+      rsp_run(n, slice * 2 / 3);
+    }
     ai_tick(n, per_line);
     vi_tick(n, per_line);
   }

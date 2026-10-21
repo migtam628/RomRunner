@@ -96,13 +96,21 @@ void pif_hle_boot(N64 *n) {
   c->gpr[29] = 0xFFFFFFFFA4001FF0ull;  /* sp */
   c->gpr[31] = 0xFFFFFFFFA4001550ull;  /* ra */
 
-  c->cp0[CP0_STATUS] = 0x34000000u;    /* CU0, CU1, FR */
+  c->cp0[CP0_STATUS] = 0x241000E0u;    /* as IPL3 leaves it: CU1, FR, KX/SX/UX */
   c->cp0[CP0_RANDOM] = 31;
   c->cp0[CP0_COUNT] = 0x5000;
-  c->cp0[CP0_CAUSE] = 0x0000005Cu;
+  c->cp0[CP0_CAUSE] = 0xB000007Cu;    /* what the console shows after boot */
   c->cp0[CP0_CONTEXT] = 0x007FFFF0u;
   c->cp0[CP0_EPC] = c->cp0[CP0_ERROREPC] = 0xFFFFFFFFFFFFFFFFull;
   c->cp0[CP0_BADVADDR] = 0xFFFFFFFFFFFFFFFFull;
+
+  /* The TLB powers up with junk; make sure no entry matches a real address. */
+  for (int i = 0; i < 32; i++) {
+    c->tlb[i].mask = 0;
+    c->tlb[i].hi = 0xFFFFFFFF80000000ull + (uint64_t)i * 0x2000;  /* KSEG0: never translated */
+    c->tlb[i].lo0 = c->tlb[i].lo1 = 0;
+    c->tlb[i].global = false;
+  }
 
   c->pc = sext32(entry);
   c->next_pc = c->pc + 4;

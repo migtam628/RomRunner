@@ -3,9 +3,8 @@
  * RDRAM, RSP memory/registers, RDP command registers, MI, VI, AI, PI, RI,
  * SI, the cartridge domains and PIF RAM.
  *
- * Stage 1 note: the RSP and RDP are not emulated yet. Starting an RSP task
- * completes it at once, and RDP command lists complete at once, so games
- * keep running (with no graphics or audio from those units).
+ * Stage 2 note: the RSP runs (rsp.c); the RDP is not emulated yet, so RDP
+ * command lists complete at once.
  */
 #include <string.h>
 
@@ -17,7 +16,7 @@
 static void sp_dma(N64 *n, bool to_rdram, uint32_t v) {
   uint32_t len = (v & 0xFFF) | 7;          /* bytes - 1, rounded to 8 */
   uint32_t count = ((v >> 12) & 0xFF) + 1;
-  uint32_t skip = (v >> 20) & 0xFFF;
+  uint32_t skip = (v >> 20) & 0xFF8;       /* the skip is in whole 8-byte units */
   uint8_t *mem = (n->sp.mem_addr & 0x1000) ? n->imem : n->dmem;
   uint32_t ma = n->sp.mem_addr & 0xFF8, da = n->sp.dram_addr & 0xFFFFF8;
   for (uint32_t i = 0; i < count; i++) {
@@ -27,10 +26,13 @@ static void sp_dma(N64 *n, bool to_rdram, uint32_t v) {
       else mem[m] = n->rdram[d];
     }
     ma = (ma + len + 1) & 0xFFF;
-    da += len + 1 + skip;
+    da += len + 1;
+    if (i + 1 < count) da += skip;  /* skip only between rows */
   }
-  n->sp.mem_addr = (n->sp.mem_addr & 0x1000) | ma;
-  n->sp.dram_addr = da & 0xFFFFFF;
+  n->sp.cur_mem = (n->sp.mem_addr & 0x1000) | ma;
+  n->sp.cur_dram = da & 0xFFFFF8;
+  /* When done the length reads back as 0xFF8 with count 0 (skip kept). */
+  n->sp.rd_len = n->sp.wr_len = (v & 0xFFF00000u) | 0xFF8;
 }
 
 static uint8_t cart_byte(N64 *n, uint32_t pa) {
@@ -45,7 +47,11 @@ static uint8_t cart_byte(N64 *n, uint32_t pa) {
 static void pi_dma(N64 *n, bool to_rdram, uint32_t len) {
   uint32_t da = n->pi.dram_addr & 0xFFFFFE, ca = n->pi.cart_addr & ~1u;
   len = (len & 0xFFFFFF) + 1;
-  for (uint32_t i = 0; i < len; i++) {
+  uint32_t count = len;
+  /* Into RDRAM, a destination that isn't 8-byte aligned shortens the first
+   * block by the misalignment (as measured on hardware). */
+  if (to_rdram && (da & 7) && len <= 128 - (da & 7)) count = len - (da & 7) > 0 ? len - (da & 7) : 0;
+  for (uint32_t i = 0; i < count; i++) {
     uint32_t d = (da + i) & (RDRAM_SIZE - 1);
     if (to_rdram) {
       n->rdram[d] = cart_byte(n, ca + i);
@@ -55,14 +61,14 @@ static void pi_dma(N64 *n, bool to_rdram, uint32_t len) {
     }
   }
   n->pi.dram_addr = (da + len + 7) & ~7u & 0xFFFFFF;
-  n->pi.cart_addr = ca + len;
+  n->pi.cart_addr = ca + ((len + 1) & ~1u);
   n64_raise_mi(n, MI_INTR_PI);
 }
 
 /* ------------------------------------------------------------------ */
 /* 32-bit register access                                               */
 
-static uint32_t reg_read(N64 *n, uint32_t pa) {
+uint32_t rcp_reg_read(N64 *n, uint32_t pa) {
   uint32_t r = (pa & 0xFFFFF) >> 2;
   switch (pa >> 20) {
     case 0x040:
@@ -70,10 +76,10 @@ static uint32_t reg_read(N64 *n, uint32_t pa) {
         uint8_t *m = (pa & 0x1000) ? n->imem : n->dmem;
         return rd32be(m + (pa & 0xFFC));
       }
-      if (pa == 0x04080000u) return n->sp.pc & 0xFFC;
+      if (pa == 0x04080000u) return n->rsp.pc & 0xFFC;
       switch (pa & 0x1F) {
-        case 0x00: return n->sp.mem_addr;
-        case 0x04: return n->sp.dram_addr;
+        case 0x00: return n->sp.cur_mem;
+        case 0x04: return n->sp.cur_dram;
         case 0x08: return n->sp.rd_len;
         case 0x0C: return n->sp.wr_len;
         case 0x10: return n->sp.status;
@@ -153,14 +159,9 @@ static void sp_status_write(N64 *n, uint32_t v) {
     if (v & (1u << (10 + i * 2))) st |= 0x80u << i;
   }
   n->sp.status = st;
-  if (!(st & 1)) {
-    /* No RSP yet (stage 2): finish the task straight away. */
-    n->sp.status |= 3;  /* halted + broke */
-    if (n->sp.status & 0x40) n64_raise_mi(n, MI_INTR_SP);
-  }
 }
 
-static void reg_write(N64 *n, uint32_t pa, uint32_t v) {
+void rcp_reg_write(N64 *n, uint32_t pa, uint32_t v) {
   uint32_t r = (pa & 0xFFFFF) >> 2;
   switch (pa >> 20) {
     case 0x040:
@@ -169,12 +170,18 @@ static void reg_write(N64 *n, uint32_t pa, uint32_t v) {
         wr32be(m + (pa & 0xFFC), v);
         return;
       }
-      if (pa == 0x04080000u) { n->sp.pc = v & 0xFFC; return; }
+      if (pa == 0x04080000u) {
+        n->sp.pc = v & 0xFFC;
+        n->rsp.pc = n->sp.pc;
+        n->rsp.next_pc = (n->rsp.pc + 4) & 0xFFC;
+        n->rsp.in_delay = false;
+        return;
+      }
       switch (pa & 0x1F) {
         case 0x00: n->sp.mem_addr = v & 0x1FF8; return;
         case 0x04: n->sp.dram_addr = v & 0xFFFFF8; return;
-        case 0x08: n->sp.rd_len = v; sp_dma(n, false, v); return;
-        case 0x0C: n->sp.wr_len = v; sp_dma(n, true, v); return;
+        case 0x08: sp_dma(n, false, v); return;
+        case 0x0C: sp_dma(n, true, v); return;
         case 0x10: sp_status_write(n, v); return;
         case 0x1C: n->sp.semaphore = 0; return;
       }
@@ -268,8 +275,8 @@ static void reg_write(N64 *n, uint32_t pa, uint32_t v) {
       switch (r) {
         case 0: p->dram_addr = v & 0xFFFFFE; return;
         case 1: p->cart_addr = v & ~1u; return;
-        case 2: p->rd_len = v; pi_dma(n, false, v); return;
-        case 3: p->wr_len = v; pi_dma(n, true, v); return;
+        case 2: pi_dma(n, false, v); p->rd_len = p->wr_len = 0x7F; return;  /* read back 0x7F when done */
+        case 3: pi_dma(n, true, v); p->rd_len = p->wr_len = 0x7F; return;
         case 4: if (v & 2) n64_clear_mi(n, MI_INTR_PI); return;
         case 5: p->dom1_lat = v & 0xFF; return;
         case 6: p->dom1_pwd = v & 0xFF; return;
@@ -310,7 +317,7 @@ static inline bool is_rcp(uint32_t pa) { return pa >= 0x04000000u && pa < 0x0490
 
 bool bus_read32(N64 *n, uint32_t pa, uint32_t *v) {
   if (pa < RDRAM_SIZE) { *v = rd32be(n->rdram + pa); return true; }
-  if (is_rcp(pa)) { *v = reg_read(n, pa); return true; }
+  if (is_rcp(pa)) { *v = rcp_reg_read(n, pa); return true; }
   if (pa >= 0x10000000u && pa < 0x1FC00000u) {
     uint32_t o = pa - 0x10000000u;
     /* Past the end of the ROM the bus returns the low address bits. */
@@ -351,7 +358,7 @@ bool bus_read8(N64 *n, uint32_t pa, uint8_t *v) {
 
 bool bus_write32(N64 *n, uint32_t pa, uint32_t v) {
   if (pa < RDRAM_SIZE) { wr32be(n->rdram + pa, v); return true; }
-  if (is_rcp(pa)) { reg_write(n, pa, v); return true; }
+  if (is_rcp(pa)) { rcp_reg_write(n, pa, v); return true; }
   if (pa >= 0x08000000u && pa < 0x08000000u + sizeof n->sram) {
     wr32be(n->sram + (pa - 0x08000000u), v);
     n->save_dirty = true;

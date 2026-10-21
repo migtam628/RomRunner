@@ -78,6 +78,43 @@ jobs:
           grep -q "last 320x237" out.txt
           grep -q "non-black pixels: 75840 of 75840" out.txt
 
+  n64-suites:
+    name: N64 test cartridges
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the core and test tools
+        working-directory: cores/n64
+        run: make -j4 && make tools
+      - name: Fetch krom's test ROMs (public domain)
+        run: |
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/PeterLemon/N64 /tmp/krom
+          git -C /tmp/krom sparse-checkout set CPUTest RSPTest
+      - name: Build Dillon's n64-tests
+        continue-on-error: true
+        run: |
+          git clone -q https://github.com/ARM9/bass /tmp/bass
+          git -C /tmp/bass checkout -q v14
+          make -C /tmp/bass/bass -j4
+          mkdir -p /tmp/tools "$HOME/.local/share/bass"
+          cp /tmp/bass/bass/bass /tmp/tools/ 2>/dev/null || cp /tmp/bass/bass/out/bass /tmp/tools/
+          cp -r /tmp/bass/bass/data/architectures "$HOME/.local/share/bass/" 2>/dev/null || true
+          cp cores/n64/build/chksum64 /tmp/tools/
+          export PATH="/tmp/tools:$PATH"
+          git clone -q --depth 1 https://github.com/Dillonb/n64-tests /tmp/dillon
+          cmake -S /tmp/dillon -B /tmp/dillon/build -DCMAKE_BUILD_TYPE=Release
+          make -C /tmp/dillon/build -j4
+          find /tmp/dillon/build/src -name '*.z64' | wc -l
+      - name: Run all and compare with the baseline
+        run: |
+          pip install --quiet pillow
+          DILLON=()
+          if ls /tmp/dillon/build/src/*.z64 >/dev/null 2>&1; then DILLON=(--dillon /tmp/dillon/build/src); fi
+          python3 cores/n64/test/suites.py --romtest cores/n64/build/romtest --krom /tmp/krom "${DILLON[@]}" \
+            --baseline cores/n64/test/suite_baseline.txt --summary "$GITHUB_STEP_SUMMARY" | tee /tmp/suite.md
+          echo "::notice title=N64 suites::$(head -1 /tmp/suite.md | sed 's/## //')"
+          grep -o "dillon/[^ |]* | [A-Z]*" /tmp/suite.md | sed 's/^/::notice title=dillon::/' | head -40 || true
+
   downloads:
     name: Download ${{ matrix.emulator }}
     # Checks that every emulator's official download still resolves, so the

@@ -44,7 +44,10 @@ static void exception(N64 *n, uint32_t code, uint32_t offset, uint32_t ce) {
 }
 
 static void address_error(N64 *n, uint64_t va, bool store) {
-  n->cpu.cp0[CP0_BADVADDR] = va;
+  Cpu *c = &n->cpu;
+  c->cp0[CP0_BADVADDR] = va;
+  /* Hardware also updates Context's BadVPN2 field here. */
+  c->cp0[CP0_CONTEXT] = (c->cp0[CP0_CONTEXT] & ~0x7FFFF0ull) | ((va >> 13) & 0x7FFFF) << 4;
   exception(n, store ? EXC_ADES : EXC_ADEL, 0x180, 0);
 }
 

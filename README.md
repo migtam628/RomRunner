@@ -12,7 +12,7 @@ Every build comes from GitHub Actions; get it from **[Releases](https://github.c
 
 | Platform | File | Install |
 |---|---|---|
-| Android phones and tablets, Fire TV | `RomRunner-<ver>-android.apk` | Sideload. Fire TV: turn on *Developer options → ADB debugging* and *Install unknown apps*, then `adb connect <tv-ip>` and `adb install -r RomRunner-<ver>-android.apk`. It appears in the Fire TV launcher. |
+| Android phones and tablets, Fire TV | `RomRunner-<ver>-android-arm64.apk` (64-bit phones, newer Fire TV), `RomRunner-<ver>-android-armv7.apk` (32-bit Fire TV sticks, older phones), or `RomRunner-<ver>-android.apk` (all CPU types, ~250 MB) | Sideload. The per-CPU APKs are much smaller; installing needs about twice the APK size free. Fire TV: turn on *Developer options → ADB debugging* and *Install unknown apps*, then `adb connect <tv-ip>` and `adb install -r RomRunner-<ver>-android-armv7.apk`. It appears in the Fire TV launcher. |
 | Windows | `RomRunner-<ver>-windows-x64.zip` | Unzip and run `RomRunner.exe`. Cores included. |
 | macOS | `RomRunner-<ver>-macos.zip` | Unzip, then right-click the app → **Open** the first time (not notarized). Cores download on first game. |
 | Linux | `RomRunner-<ver>-linux-x64.tar.gz` | Extract and run `./romrunner`. Needs GTK 3. Cores included. |

@@ -15,7 +15,7 @@ CMake builds it for Windows (MSVC), Android (NDK), iOS and universal macOS; `too
 
 | Stage | Scope | State |
 |---|---|---|
-| 1 | Main processor (VR4300) with floating point, virtual memory (TLB), exceptions and interrupts; memory map; cartridge loading in .z64/.v64/.n64 order; boot without a PIF ROM or BIOS; CIC detection; video output; audio DMA; controllers and EEPROM over the PIF; save states | **done** |
+| 1 | Main processor (VR4300) with floating point, virtual memory (TLB), exceptions and interrupts; memory map; cartridge loading in .z64/.v64/.n64 order; boot without a PIF ROM or BIOS; CIC detection and the CIC-6105 challenge; video output; audio DMA; controllers and EEPROM over the PIF; save states | **done** |
 | 2 | RSP: the scalar unit, the vector unit (multiply-accumulate, clip compares, reciprocal/inverse square root, all vector loads and stores), SP DMA, and running in step with the CPU, so games' own audio and graphics microcode runs | **done** |
 | 3 | RDP, drawn in software: triangles with shade/texture/depth interpolation and perspective-correct textures, texture and fill rectangles, fill/copy/1-cycle/2-cycle modes, TMEM loads (block, tile, TLUT), every texture format except YUV, point and 3-point bilinear filtering, wrap/mirror/clamp, the colour combiner (with its 9-bit overflow rule), the blender, Z buffer, 16/32-bit framebuffers | **first pass done** |
 | 4 | Saves: SRAM, FlashRAM, a save-type database, controller pak | partial (EEPROM, SRAM) |
@@ -23,7 +23,7 @@ CMake builds it for Windows (MSVC), Android (NDK), iOS and universal macOS; `too
 
 Not yet in the RDP: antialiasing/coverage, dithering, mipmap LOD selection, YUV textures. RomRunner still opens N64 games in an outside emulator by default; this core is an experimental choice in Settings → Emulators → N64, shipped in every native release.
 
-krom's N64NICCC polygon demo (RSP + RDP streaming) renders correctly at about 2.3x full speed on a desktop CPU.
+krom's N64NICCC polygon demo (RSP + RDP streaming) renders correctly at about 2.3x full speed on a desktop CPU. Majora's Mask boots through its intro.
 
 ## Test cartridges
 

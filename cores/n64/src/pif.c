@@ -84,8 +84,18 @@ void pif_hle_boot(N64 *n) {
     n->rdram[(dst + i) & (RDRAM_SIZE - 1)] = rom[0x1000 + i];
   }
 
-  /* RDRAM size, where libultra reads it. */
-  wr32be(n->rdram + (n->cic == 6105 ? 0x3F0 : 0x318), RDRAM_SIZE);
+  /* The boot values libultra's osInitialize reads (osTvType, osRomType,
+   * osRomBase, osResetType, osCicId, osVersion, osMemSize). Games check
+   * osTvType against their region: Zelda refuses to run on "PAL" with
+   * "This game is not designed for use on this system". */
+  wr32be(n->rdram + 0x300, n->pal ? 0 : 1);
+  wr32be(n->rdram + 0x304, 0);                 /* cartridge */
+  wr32be(n->rdram + 0x308, 0xB0000000u);
+  wr32be(n->rdram + 0x30C, 0);                 /* cold reset */
+  wr32be(n->rdram + 0x310, seed);
+  wr32be(n->rdram + 0x314, 0);
+  wr32be(n->rdram + 0x318, RDRAM_SIZE);
+  if (n->cic == 6105) wr32be(n->rdram + 0x3F0, RDRAM_SIZE);
 
   c->gpr[11] = 0xFFFFFFFFA4000040ull;  /* t3 */
   c->gpr[19] = 0;                      /* s3: ROM type (cartridge) */
@@ -174,6 +184,37 @@ static bool eeprom_command(N64 *n, const uint8_t *cmd, int tx, uint8_t *resp, in
   }
 }
 
+/* CIC-NUS-6105 challenge (PIF command bit 0x02). Games on this chip
+ * (Majora's Mask, Banjo-Tooie, Ocarina on some carts, ...) write 15 bytes
+ * of challenge to PIF RAM 0x30..0x3E and refuse to run unless the answer
+ * matches what the chip computes: nibble by nibble, each answer nibble is
+ * key + 5 * challenge, and the answer picks the next key from one of two
+ * tables (described on n64brew, "CIC-NUS-6105"). */
+static void cic_6105_challenge(uint8_t *ram) {
+  static const uint8_t lut0[16] = {0x4, 0x7, 0xA, 0x7, 0xE, 0x5, 0xE, 0x1, 0xC, 0xF, 0x8, 0xF, 0x6, 0x3, 0x6, 0x9};
+  static const uint8_t lut1[16] = {0x4, 0x1, 0xA, 0x7, 0xE, 0x5, 0xE, 0x1, 0xC, 0x9, 0x8, 0x5, 0x6, 0x3, 0xC, 0x9};
+  uint8_t chl[30], rsp[30];
+  for (int i = 0; i < 15; i++) {
+    chl[i * 2] = (uint8_t)(ram[0x30 + i] >> 4);
+    chl[i * 2 + 1] = (uint8_t)(ram[0x30 + i] & 0xF);
+  }
+  uint8_t key = 0xB;
+  const uint8_t *lut = lut0;
+  for (int i = 0; i < 30; i++) {
+    uint8_t r = (uint8_t)((key + 5 * chl[i]) & 0xF);
+    rsp[i] = r;
+    key = lut[r];
+    int sgn = (r >> 3) & 1;
+    int mag = (sgn ? ~r : r) & 7;
+    int mod = (mag % 3 == 1) ? sgn : 1 - sgn;
+    if (lut == lut1 && (r == 0x1 || r == 0x9)) mod = 1;
+    if (lut == lut1 && (r == 0xB || r == 0xE)) mod = 0;
+    lut = mod ? lut1 : lut0;
+  }
+  ram[0x2E] = ram[0x2F] = 0;
+  for (int i = 0; i < 15; i++) ram[0x30 + i] = (uint8_t)(rsp[i * 2] << 4 | rsp[i * 2 + 1]);
+}
+
 void pif_process(N64 *n) {
   uint8_t *ram = n->pif_ram;
   uint8_t ctrl = ram[63];
@@ -198,7 +239,8 @@ void pif_process(N64 *n) {
       ch++;
     }
   }
+  if (ctrl & 0x02) cic_6105_challenge(ram);
   /* Command bits are acknowledged by clearing them. 0x08 ends the boot
-   * handshake; 0x20/0x02 (CIC challenge) are not needed with this boot. */
+   * handshake; 0x20 (checksum verify) isn't needed with the HLE boot. */
   ram[63] = (uint8_t)(ctrl & ~(0x01 | 0x02 | 0x08 | 0x20 | 0x30));
 }

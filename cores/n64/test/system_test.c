@@ -153,6 +153,16 @@ int main(int argc, char **argv) {
   CHECK("NTSC", m->pal, 0);
   CHECK("boot pc", (uint32_t)m->cpu.pc, 0x80000400u);
   CHECK("osMemSize", rd32be(m->rdram + 0x318), RDRAM_SIZE);
+  CHECK("osTvType NTSC", rd32be(m->rdram + 0x300), 1);
+  CHECK("osRomBase", rd32be(m->rdram + 0x308), 0xB0000000u);
+  {
+    /* CIC-6105 challenge: PIF answers and clears command bit 0x02. */
+    for (int i = 0; i < 15; i++) m->pif_ram[0x30 + i] = (uint8_t)(i * 17);
+    m->pif_ram[63] = 0x02;
+    pif_process(m);
+    CHECK("6105 challenge acknowledged", m->pif_ram[63] & 0x02, 0);
+    CHECK("6105 answer first byte", m->pif_ram[0x30], 0xBF); /* worked by hand: B, then F */
+  }
 
   for (int i = 0; i < 3; i++) retro_run();
   CHECK("frames delivered", frames_out, 3);

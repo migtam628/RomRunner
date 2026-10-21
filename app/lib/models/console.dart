@@ -222,7 +222,11 @@ enum Console {
     fullName: 'Nintendo 64',
     extensions: ['z64', 'n64', 'v64'],
     ejsCore: 'n64',
+    inHouse: 'romrunner_n64',
     color: Color(0xFF16A34A),
+    // Touch pad for the built-in core (see cores/n64/README.md for the mapping).
+    face: [PadButton('B', Pad.y), PadButton('C▲', Pad.x), PadButton('A', Pad.b), PadButton('C▶', Pad.a)],
+    shoulders: [PadButton('L', Pad.l), PadButton('R', Pad.r), PadButton('Z', Pad.l2)],
     external: true,
     hints: ['n64', 'nintendo64'],
   ),
@@ -320,6 +324,7 @@ enum Console {
     this.also = const [],
     this.core = '',
     this.ejsCore = '',
+    this.inHouse = '',
     required this.color,
     this.face = const [],
     this.shoulders = const [],
@@ -344,6 +349,10 @@ enum Console {
 
   /// EmulatorJS core id used by the web build; empty if unsupported there.
   final String ejsCore;
+
+  /// RomRunner's own core for a system that otherwise opens in another app
+  /// (cores/ in the repo), offered as an experimental choice.
+  final String inHouse;
   final Color color;
   final List<PadButton> face;
   final List<PadButton> shoulders;
@@ -364,6 +373,9 @@ enum Console {
 
   /// Whether this build plays the system itself.
   bool get playsHere => kIsWeb ? ejsCore.isNotEmpty : core.isNotEmpty;
+
+  /// Whether this build can offer RomRunner's own core for the system.
+  bool get hasInHouse => !kIsWeb && inHouse.isNotEmpty;
 
   /// Whether this build opens the system in another app.
   bool get launchesExternally => !kIsWeb && external && core.isEmpty;

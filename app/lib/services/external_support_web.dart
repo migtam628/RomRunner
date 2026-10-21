@@ -7,6 +7,9 @@ ExternalSupport createExternalSupport() => _WebExternalSupport();
 
 class _WebExternalSupport extends ExternalSupport {
   @override
+  Future<bool> hasBuiltIn(Console c) async => false;
+
+  @override
   HostOs? get host => null;
   @override
   String unsupportedReason(Console c) => '${c.fullName} games can\'t run in a browser.';

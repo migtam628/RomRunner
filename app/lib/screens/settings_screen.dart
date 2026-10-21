@@ -264,6 +264,7 @@ class _EmulatorPicker extends StatefulWidget {
 class _EmulatorPickerState extends State<_EmulatorPicker> {
   final _ext = ExternalSupport.instance;
   List<EmulatorChoice>? _found;
+  bool _builtIn = false;
 
   @override
   void initState() {
@@ -279,7 +280,13 @@ class _EmulatorPickerState extends State<_EmulatorPicker> {
     } catch (_) {
       found = const [];
     }
-    if (mounted) setState(() => _found = found);
+    final builtIn = await _ext.hasBuiltIn(widget.console);
+    if (mounted) {
+      setState(() {
+        _found = found;
+        _builtIn = builtIn;
+      });
+    }
   }
 
   @override
@@ -289,6 +296,7 @@ class _EmulatorPickerState extends State<_EmulatorPicker> {
     final current = widget.current;
     final options = <EmulatorChoice>[
       ?current,
+      if (_builtIn && current?.id != ExternalSupport.builtIn) ExternalSupport.builtInChoice(c),
       ...?_found?.where((f) => f.id != current?.id),
       if (!_ext.canBrowse && current?.id != ExternalSupport.chooseEachTime)
         const EmulatorChoice(ExternalSupport.chooseEachTime, 'Ask each time', detail: 'Pick an app from the Open with sheet'),

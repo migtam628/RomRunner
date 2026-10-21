@@ -33,6 +33,21 @@ class _InstallDialogState extends State<_InstallDialog> {
   String? _error;
 
   bool get _android => defaultTargetPlatform == TargetPlatform.android;
+  bool _builtIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ext.hasBuiltIn(widget.console).then((v) {
+      if (mounted) setState(() => _builtIn = v);
+    });
+  }
+
+  Future<void> _useBuiltIn() async {
+    final choice = ExternalSupport.builtInChoice(widget.console);
+    await _ext.choose(widget.console, choice);
+    if (mounted) Navigator.pop(context, choice);
+  }
 
   Future<void> _install() async {
     setState(() {
@@ -100,6 +115,11 @@ class _InstallDialogState extends State<_InstallDialog> {
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        if (_builtIn)
+          TextButton(
+            onPressed: _busy ? null : _useBuiltIn,
+            child: Text('Try RomRunner ${widget.console.name} (experimental)'),
+          ),
         FilledButton(
           autofocus: true,
           onPressed: _busy ? null : _install,

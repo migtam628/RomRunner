@@ -117,6 +117,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ..showSnackBar(SnackBar(content: Text(msg), action: action));
 
   Future<void> _play(Game game) async {
+    final c = game.console;
+    if (c.hasInHouse && (await ExternalSupport.instance.current(c))?.id == ExternalSupport.builtIn) {
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => GameScreen(game: game, core: c.inHouse)));
+      return;
+    }
+    if (!mounted) return;
     if (game.console.launchesExternally) {
       try {
         await ExternalSupport.instance.launch(game);

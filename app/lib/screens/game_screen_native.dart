@@ -18,8 +18,11 @@ import '../widgets/pause_menu.dart';
 import '../widgets/touch_controller.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.game});
+  const GameScreen({super.key, required this.game, this.core});
   final Game game;
+
+  /// Core to load instead of the console's own (an in-house core).
+  final String? core;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -72,8 +75,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     try {
       final paths = await AppPaths.get();
       final manager = CoreManager.instance;
-      var corePath = await manager.locate(_console);
-      if (corePath == null && manager.canDownload) {
+      var corePath = await manager.locate(_console, core: widget.core);
+      if (corePath == null && manager.canDownload && widget.core == null) {
         setState(() => _downloadProgress = 0);
         corePath = await manager.download(_console, onProgress: (v) {
           if (mounted) setState(() => _downloadProgress = v);
@@ -81,7 +84,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       }
       if (corePath == null) {
         throw RomRunnerException(
-          'The ${_console.core} core is not bundled with this build.\n'
+          'The ${widget.core ?? _console.core} core is not bundled with this build.\n'
           'Run tool/fetch_cores.sh for this platform and rebuild.',
         );
       }

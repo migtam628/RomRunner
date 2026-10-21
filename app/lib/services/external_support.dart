@@ -49,6 +49,17 @@ abstract class ExternalSupport {
   /// Android only: show the system "Open with" sheet every time.
   static const chooseEachTime = '*';
 
+  /// Choice id meaning "play with RomRunner's own core" ([Console.inHouse]).
+  static const builtIn = 'builtin';
+
+  /// The choice for the built-in core, for systems that have one.
+  static EmulatorChoice builtInChoice(Console c) =>
+      EmulatorChoice(builtIn, 'RomRunner ${c.name} (built in, experimental)',
+          detail: 'RomRunner\'s own emulator. Early: some games may not run yet.');
+
+  /// Whether this build ships [Console.inHouse] for [c].
+  Future<bool> hasBuiltIn(Console c);
+
   /// The platform's catalog key; null where external emulators can't be
   /// launched at all (iOS, web).
   HostOs? get host;

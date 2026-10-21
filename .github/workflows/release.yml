@@ -65,6 +65,8 @@ jobs:
           cache: true
       - name: Fetch libretro cores
         run: tool/fetch_cores.sh android
+      - name: Build RomRunner N64
+        run: tool/build_n64.sh android
       - name: Set up release signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -126,6 +128,7 @@ jobs:
         run: |
           bundle=app/build/linux/x64/release/bundle
           DEST="$PWD/$bundle/cores" tool/fetch_cores.sh linux
+          DEST="$PWD/$bundle/cores" tool/build_n64.sh linux
           mkdir -p dist
           tar -C "$(dirname "$bundle")" -czf "dist/${APP}-${{ needs.version.outputs.name }}-linux-x64.tar.gz" \
             --transform "s|^bundle|${APP}|" bundle
@@ -156,6 +159,7 @@ jobs:
         run: |
           out=app/build/windows/x64/runner/Release
           DEST="$PWD/$out/cores" tool/fetch_cores.sh windows
+          DEST="$PWD/$out/cores" tool/build_n64.sh windows
           mkdir -p dist
           name="${APP}-${{ needs.version.outputs.name }}-windows-x64"
           cp -r "$out" "dist/$name"
@@ -185,10 +189,13 @@ jobs:
             --build-name=${{ needs.version.outputs.build }} \
             --build-number=${{ needs.version.outputs.number }}
       - name: Package
-        # Cores are not bundled: the app downloads them on first use, which
-        # avoids Gatekeeper quarantining unsigned dylibs inside the bundle.
+        # libretro cores are not bundled: the app downloads them on first use.
+        # RomRunner's own N64 core is built here, so it goes inside the app,
+        # which is then ad-hoc signed again as a whole.
         run: |
           app=app/build/macos/Build/Products/Release/RomRunner.app
+          DEST="$PWD/$app/Contents/MacOS/cores" tool/build_n64.sh macos
+          codesign --force --deep --sign - "$app"
           mkdir -p dist
           ditto -c -k --keepParent "$app" "dist/${APP}-${{ needs.version.outputs.name }}-macos.zip"
       - uses: actions/upload-artifact@v6
@@ -210,6 +217,8 @@ jobs:
           cache: true
       - name: Fetch libretro cores
         run: tool/fetch_cores.sh ios
+      - name: Build RomRunner N64
+        run: tool/build_n64.sh ios
       - name: Build
         working-directory: app
         run: |

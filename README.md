@@ -247,6 +247,7 @@ packages/romrunner_core/  FFI plugin: the C libretro host
   src/romrunner_core.c    the bridge (one file, rr_* API)
   test/headless.c         headless test harness
 tool/fetch_cores.sh     downloads prebuilt cores from the libretro buildbot, per platform
+tool/build_n64.sh       builds RomRunner's own N64 core and puts it where the app looks
 tool/test_bridge.sh     builds the bridge headless and runs a ROM through a core
 tool/android_signing.sh creates the Android release key and stores it in repo secrets
 ```
@@ -285,7 +286,7 @@ Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge
 - **PS1 crashes:** in the Linux test VM, the PS1 core's fast (dynarec) mode crashed on homebrew `.exe` test programs, while its interpreter ran them fine. If PS1 games crash on a device, switch to the interpreter (one line in `game_screen_native.dart`, the same way iOS does).
 - **Desktop gamepads:** not supported yet on iOS, macOS, Windows or Linux. Android and Fire TV gamepads work.
 - **Zips in game folders:** these are skipped, except arcade romsets in a folder named `Arcade`/`FBNeo`/`MAME`. Unzip other zips with Add ROMs.
-- **N64 inside RomRunner:** not possible yet, because the N64 cores need GPU rendering in the engine. N64 opens in an external emulator on native platforms and runs built in on the web.
+- **N64 inside RomRunner:** the libretro N64 cores need GPU rendering in the engine, so by default N64 opens in an external emulator on native platforms and runs built in on the web. RomRunner's own N64 core (below) can be picked instead in Settings → Emulators as "RomRunner N64 (built in, experimental)", or from the "no emulator" dialog.
 - **Dolphin:** has to be installed by hand (see above).
 - **macOS:** the app isn't notarized, and it ships without the App Sandbox so it can load downloaded cores.
 
@@ -293,7 +294,7 @@ Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge
 
 RomRunner is getting its own emulators, written in C from public hardware documentation with no code from other emulators. Each one plugs into the same bridge as the libretro cores, and each is tested on every push. The libretro core for a system stays as the fallback until the in-house one is ready.
 
-- **N64** (`cores/n64/`): stages 1 and 2 of 5 are done (main processor, memory, boot without a BIOS, video, controllers, EEPROM, save states, the RSP), and stage 3, the RDP graphics chip in software, has its first pass. 238 of 323 community hardware test cartridges pass, and krom's N64NICCC 3D demo renders correctly. See [cores/n64/README.md](cores/n64/README.md).
+- **N64** (`cores/n64/`): stages 1 and 2 of 5 are done (main processor, memory, boot without a BIOS, video, controllers, EEPROM, save states, the RSP), and stage 3, the RDP graphics chip in software, has its first pass. 238 of 323 community hardware test cartridges pass, and krom's N64NICCC 3D demo renders correctly. Releases ship it on Android, iOS, macOS, Windows and Linux as an experimental choice for N64 (`tool/build_n64.sh <platform>` builds it locally). See [cores/n64/README.md](cores/n64/README.md).
 
 ### Roadmap
 

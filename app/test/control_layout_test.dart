@@ -9,7 +9,7 @@ void main() {
   const phoneLandscape = Size(860, 412);
 
   test('default controls stay on screen and do not overlap', () {
-    for (final c in Console.builtIn) {
+    for (final c in [...Console.builtIn, Console.n64]) {
       for (final area in [phonePortrait, phoneLandscape]) {
         final l = ControlLayout();
         final specs = controlSpecs(c);

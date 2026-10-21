@@ -11,8 +11,11 @@ import '../models/game.dart';
 /// EmulatorJS, inside an iframe. EmulatorJS handles input, gamepads, audio,
 /// save states and its own in-game menu.
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.game});
+  const GameScreen({super.key, required this.game, this.core});
   final Game game;
+
+  /// Core to load instead of the console's own (an in-house core).
+  final String? core;
 
   @override
   State<GameScreen> createState() => _GameScreenState();

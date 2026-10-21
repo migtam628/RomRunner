@@ -9,6 +9,8 @@ make          # build/romrunner_n64_libretro.so (.dylib on macOS)
 make test     # CPU and system tests
 ```
 
+CMake builds it for Windows (MSVC), Android (NDK), iOS and universal macOS; `tool/build_n64.sh <platform>` runs that and copies the library where the app finds it.
+
 ## Status
 
 | Stage | Scope | State |
@@ -19,7 +21,7 @@ make test     # CPU and system tests
 | 4 | Saves: SRAM, FlashRAM, a save-type database, controller pak | partial (EEPROM, SRAM) |
 | 5 | Speed: a JIT translator for ARM64 and x86-64, and GPU drawing | |
 
-Not yet in the RDP: antialiasing/coverage, dithering, mipmap LOD selection, YUV textures. RomRunner still opens N64 games in an outside emulator by default; the built-in core is not wired into the app yet.
+Not yet in the RDP: antialiasing/coverage, dithering, mipmap LOD selection, YUV textures. RomRunner still opens N64 games in an outside emulator by default; this core is an experimental choice in Settings → Emulators → N64, shipped in every native release.
 
 krom's N64NICCC polygon demo (RSP + RDP streaming) renders correctly at about 2.3x full speed on a desktop CPU.
 

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/console.dart';
 import '../models/game.dart';
+import 'core_manager.dart';
 import 'disc_sniffer.dart';
 import 'emulator_installer.dart';
 import 'external_catalog.dart';
@@ -24,6 +25,10 @@ ExternalSupport createExternalSupport() => NativeExternalSupport();
 class NativeExternalSupport extends ExternalSupport {
   static const _channel = MethodChannel('romrunner/external');
   Map<String, dynamic>? _state;
+
+  @override
+  Future<bool> hasBuiltIn(Console c) async =>
+      c.hasInHouse && await CoreManager.instance.locate(c, core: c.inHouse) != null;
 
   @override
   HostOs? get host => Platform.isWindows

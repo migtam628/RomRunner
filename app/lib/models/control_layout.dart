@@ -33,7 +33,9 @@ List<ControlSpec> controlSpecs(Console c) => [
       for (final b in c.face) ControlSpec('face_${b.pad.name}', ControlKind.face, b.label, b.pad.bit, '${b.label} button'),
       for (final b in c.shoulders)
         ControlSpec('sh_${b.pad.name}', ControlKind.shoulder, b.label, b.pad.bit, '${b.label} button'),
-      ControlSpec('select', ControlKind.small, 'SELECT', Pad.select.bit, 'Select'),
+      c == Console.n64
+          ? ControlSpec('select', ControlKind.small, 'C▼', Pad.select.bit, 'C-Down') /* the N64 core maps Select to C-Down */
+          : ControlSpec('select', ControlKind.small, 'SELECT', Pad.select.bit, 'Select'),
       ControlSpec('start', ControlKind.small, 'START', Pad.start.bit, 'Start'),
       const ControlSpec(menuId, ControlKind.icon, 'menu', 0, 'Menu button'),
       const ControlSpec(fastForwardId, ControlKind.icon, 'ff', 0, 'Fast-forward button'),

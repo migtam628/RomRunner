@@ -1,4 +1,4 @@
-import 'dart:ffi' show Abi;
+import 'dart:ffi' show Abi, DynamicLibrary;
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -23,16 +23,18 @@ class CoreManager {
 
   bool get canDownload => Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
-  String fileName(Console c) {
-    if (Platform.isAndroid) return 'lib${c.core}_libretro_android.so';
+  /// [core] overrides the console's libretro core (e.g. an in-house one).
+  String fileName(Console c, {String? core}) {
+    final name = core ?? c.core;
+    if (Platform.isAndroid) return 'lib${name}_libretro_android.so';
     if (Platform.isIOS) {
-      if (c.core == 'mgba') return 'mgba_libretro.dylib'; // buildbot naming quirk
-      if (c.core == 'melondsds') return 'melonds_libretro_ios.dylib'; // no melonDS DS build for iOS
-      return '${c.core}_libretro_ios.dylib';
+      if (name == 'mgba') return 'mgba_libretro.dylib'; // buildbot naming quirk
+      if (name == 'melondsds') return 'melonds_libretro_ios.dylib'; // no melonDS DS build for iOS
+      return '${name}_libretro_ios.dylib';
     }
-    if (Platform.isMacOS) return '${c.core}_libretro.dylib';
-    if (Platform.isWindows) return '${c.core}_libretro.dll';
-    return '${c.core}_libretro.so';
+    if (Platform.isMacOS) return '${name}_libretro.dylib';
+    if (Platform.isWindows) return '${name}_libretro.dll';
+    return '${name}_libretro.so';
   }
 
   Uri? downloadUri(Console c) {
@@ -51,9 +53,22 @@ class CoreManager {
 
   /// Path or library name to pass to the bridge, or null if the core is
   /// not available yet (desktop: call [download]).
-  Future<String?> locate(Console c) async {
-    final name = fileName(c);
-    if (Platform.isAndroid) return name; // resolved by the dynamic linker
+  Future<String?> locate(Console c, {String? core}) async {
+    final name = fileName(c, core: core);
+    if (Platform.isAndroid) {
+      // In-house cores are only present when the APK was built with them.
+      // Ask the linker: the APK usually keeps libraries uncompressed inside
+      // it rather than unpacking them, so there may be no file to check.
+      if (core != null) {
+        try {
+          DynamicLibrary.open(name);
+          return name;
+        } catch (_) {
+          return null;
+        }
+      }
+      return name; // resolved by the dynamic linker
+    }
     if (Platform.isIOS) {
       final fw = p.join(File(Platform.resolvedExecutable).parent.path, 'Frameworks', name);
       return File(fw).existsSync() ? fw : null;

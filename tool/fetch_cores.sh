@@ -30,7 +30,20 @@ done
 fetch() {
   local url=$1 inner=$2 dest=$3 tmp
   tmp=$(mktemp -d)
-  if curl -fsSL --retry 3 -o "$tmp/core.zip" "$url" && unzip -o -q "$tmp/core.zip" -d "$tmp" && [ -f "$tmp/$inner" ]; then
+  # The buildbot sometimes drops connections mid-download (curl error 56),
+  # which plain --retry doesn't cover: retry all errors, and the whole
+  # download + unzip a few times in case a truncated zip slips through.
+  local attempt ok=0
+  for attempt in 1 2 3; do
+    if curl -fsSL --connect-timeout 30 --retry 5 --retry-delay 3 --retry-all-errors -o "$tmp/core.zip" "$url" &&
+       unzip -o -q "$tmp/core.zip" -d "$tmp" && [ -f "$tmp/$inner" ]; then
+      ok=1
+      break
+    fi
+    echo "  retry $(basename "$dest") (attempt $attempt failed)" >&2
+    sleep $((attempt * 5))
+  done
+  if [ "$ok" = 1 ]; then
     mkdir -p "$(dirname "$dest")"
     mv -f "$tmp/$inner" "$dest"
     echo "  ok   $(basename "$dest")"

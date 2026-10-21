@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F7F3EA"/><stop offset="1" stop-color="#E7DFCF"/></linearGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#5B4A2E" flood-opacity="0.45"/></filter><clipPath id="clip"><rect width="1024" height="1024" rx="230"/></clipPath></defs>
+<g clip-path="url(#clip)">
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<g filter="url(#sh)" transform="rotate(-12 512 512)"><path d="M230 230 H550 L610 290 V666 Q610 690 586 690 H254 Q230 690 230 666 Z" fill="#3A86FF"/>
+<rect x="280" y="300" width="280" height="310" rx="22" fill="#BFD6FF"/></g>
+<g filter="url(#sh)" transform="rotate(4 512 512)"><path d="M330 260 H650 L710 320 V696 Q710 720 686 720 H354 Q330 720 330 696 Z" fill="#FF4D6D"/>
+<rect x="380" y="330" width="280" height="310" rx="22" fill="#FFD1DA"/></g>
+<g filter="url(#sh)" transform="rotate(16 512 512)"><path d="M420 300 H740 L800 360 V736 Q800 760 776 760 H444 Q420 760 420 736 Z" fill="#FFB703"/>
+<rect x="470" y="370" width="280" height="310" rx="22" fill="#FFF0C2"/></g>
+<path d="M590 470 L700 540 L590 610 Z" transform="rotate(16 512 512)" fill="#B07800" stroke="#B07800" stroke-width="18" stroke-linejoin="round"/></g></svg>

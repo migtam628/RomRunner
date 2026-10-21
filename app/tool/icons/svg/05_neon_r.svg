@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+<radialGradient id="bg" cx="0.5" cy="0.45" r="0.8"><stop offset="0" stop-color="#1D0B33"/><stop offset="1" stop-color="#07030F"/></radialGradient>
+<linearGradient id="neon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF4FD8"/><stop offset="1" stop-color="#29D9FF"/></linearGradient>
+<filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="22" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<clipPath id="clip"><rect width="1024" height="1024" rx="230"/></clipPath></defs>
+<g clip-path="url(#clip)">
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<g stroke="#29D9FF" stroke-opacity="0.12" stroke-width="3">
+  <line x1="0" y1="780" x2="1024" y2="780"/><line x1="0" y1="840" x2="1024" y2="840"/><line x1="0" y1="920" x2="1024" y2="920"/>
+  <line x1="512" y1="700" x2="160" y2="1024"/><line x1="512" y1="700" x2="864" y2="1024"/><line x1="512" y1="700" x2="512" y2="1024"/>
+</g>
+<g filter="url(#glow)" transform="translate(40 0) skewX(-14)">
+  <path d="M400 230 H600 Q720 230 720 360 Q720 470 620 492 L740 760 H620 L512 506 H500 V760 H400 Z M500 316 V420 H590 Q630 420 630 368 Q630 316 590 316 Z"
+        fill="none" stroke="url(#neon)" stroke-width="34" stroke-linejoin="round"/>
+</g>
+<g fill="url(#neon)" filter="url(#glow)">
+  <rect x="150" y="380" width="170" height="26" rx="13" opacity="0.8"/>
+  <rect x="110" y="470" width="190" height="26" rx="13"/>
+  <rect x="160" y="560" width="130" height="26" rx="13" opacity="0.6"/>
+</g>
+</g></svg>

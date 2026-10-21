@@ -35,6 +35,25 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ICON_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setIcon" -> {
+                    val alias = call.argument<String>("alias")
+                    val all = call.argument<List<String>>("all") ?: emptyList()
+                    if (alias == null || alias !in all) {
+                        result.error("bad_args", "Unknown icon", null)
+                    } else {
+                        try {
+                            setLauncherIcon(alias, all)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("failed", e.message, null)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "installed" -> result.success(installed(call.argument<List<String>>("packages") ?: emptyList()))
@@ -275,7 +294,23 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Each icon is an <activity-alias> of MainActivity in the manifest. Turn the
+     * chosen one on first, then the others off, so there is always a launcher
+     * entry.
+     */
+    private fun setLauncherIcon(alias: String, all: List<String>) {
+        val base = MainActivity::class.java.`package`!!.name
+        val order = listOf(alias) + all.filter { it != alias }
+        for (a in order) {
+            val state = if (a == alias) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            packageManager.setComponentEnabledSetting(ComponentName(this, base + a), state, PackageManager.DONT_KILL_APP)
+        }
+    }
+
     companion object {
+        private const val ICON_CHANNEL = "romrunner/icon"
         private const val CHANNEL = "romrunner/external"
         private const val STORAGE_CHANNEL = "romrunner/storage"
         private const val ACCESS_REQUEST = 4202

@@ -92,6 +92,11 @@ Shared extensions like `.iso` and `.bin` are recognised by looking inside the di
   - **Web:** picking a folder imports its games into that browser tab for the session.
   - **iOS** doesn't let apps keep folder access between launches, so it uses Add ROMs.
 - **Cover art** appears on each game's card automatically, from the [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails) collection. Games are matched by name: No-Intro / Redump file names (`Super Metroid (Japan, USA).sfc`) match exactly, and looser names (`zelda links awakening.gb`) usually work too, with the USA release preferred. Covers are downloaded once and kept offline; games with no match show the system tile. Switch has no covers. Turn it off in **Settings → Cover art**.
+- **App icon:** pick one of 12 icons in **Settings → App icon**.
+  - **Android, iOS:** changes the launcher / Home Screen icon. On Android the launcher can take a few seconds to update, and some launchers drop a home-screen shortcut, so you may need to add it again.
+  - **macOS, Windows, Linux:** changes the Dock, taskbar or window icon while RomRunner is open. The installed app keeps the default icon (Play R) when it isn't running.
+  - **Web:** changes the browser tab icon.
+  - The icon sources are in `app/tool/icons/svg/`. `python3 app/tool/icons/generate_icons.py` rebuilds every platform's icon files.
 - **BIOS files** (optional) go in through Add ROMs like a game: `scph5501.bin`, `gba_bios.bin` and so on are recognised and installed into the BIOS folder automatically. PS1 runs without a BIOS, but compatibility is better with one.
 
 ## Playing
@@ -163,6 +168,7 @@ Inside:
 - `folders.json`: linked folders.
 - `cover_art.json`: the cover art on/off setting.
 - `controls.json`: your touch layouts.
+- `app_icon.json`: the chosen app icon.
 - `externals.json`: the chosen emulator per system, and linked games. The ⓘ button in the app shows the exact paths.
 
 ---

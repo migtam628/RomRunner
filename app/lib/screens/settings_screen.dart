@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/console.dart';
+import '../services/app_icon.dart';
 import '../services/cover_art.dart';
 import '../services/external_catalog.dart';
 import '../services/library.dart';
@@ -139,6 +140,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+            ),
+            const SizedBox(height: 28),
+            Text('App icon', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(AppIcons.instance.explanation, style: muted),
+            const SizedBox(height: 12),
+            _IconPicker(
+              selected: AppIcons.instance.current,
+              onPick: (icon) async {
+                final note = await AppIcons.instance.set(icon);
+                if (!mounted) return;
+                setState(() {});
+                if (note != null) _snack(note);
+              },
             ),
             const SizedBox(height: 28),
             if (_library.supportsFolders) ...[
@@ -349,6 +364,59 @@ class _EmulatorPickerState extends State<_EmulatorPicker> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _IconPicker extends StatelessWidget {
+  const _IconPicker({required this.selected, required this.onPick});
+  final AppIconOption selected;
+  final ValueChanged<AppIconOption> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 14,
+      children: [
+        for (final icon in appIcons)
+          Tooltip(
+            message: icon.name,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(22),
+              onTap: icon.id == selected.id ? null : () => onPick(icon),
+              child: SizedBox(
+                width: 84,
+                child: Column(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: icon.id == selected.id ? scheme.primary : Colors.transparent,
+                          width: 3,
+                        ),
+                      ),
+                      child: Image.asset(icon.asset, width: 64, height: 64, filterQuality: FilterQuality.medium),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      icon.name,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: icon.id == selected.id ? scheme.primary : scheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

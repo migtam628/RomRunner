@@ -2,6 +2,10 @@
 
 #include <optional>
 
+#include <flutter/standard_method_codec.h>
+
+#include <vector>
+
 #include "flutter/generated_plugin_registrant.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -27,6 +31,36 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  icon_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "romrunner/icon",
+      &flutter::StandardMethodCodec::GetInstance());
+  icon_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() != "setWindowIcon") {
+          result->NotImplemented();
+          return;
+        }
+        const auto* bytes = std::get_if<std::vector<uint8_t>>(call.arguments());
+        if (bytes == nullptr || bytes->empty()) {
+          result->Error("bad_args", "Expected PNG bytes");
+          return;
+        }
+        // Windows Vista and later read PNG data as icon resource bits.
+        HICON icon = CreateIconFromResourceEx(
+            const_cast<PBYTE>(bytes->data()), static_cast<DWORD>(bytes->size()),
+            TRUE, 0x00030000, 0, 0, LR_DEFAULTCOLOR);
+        if (icon == nullptr) {
+          result->Error("decode_failed", "Couldn't read the icon");
+          return;
+        }
+        SendMessage(GetHandle(), WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(icon));
+        SendMessage(GetHandle(), WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(icon));
+        if (window_icon_ != nullptr) DestroyIcon(window_icon_);
+        window_icon_ = icon;
+        result->Success();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -40,6 +74,11 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  icon_channel_ = nullptr;
+  if (window_icon_ != nullptr) {
+    DestroyIcon(window_icon_);
+    window_icon_ = nullptr;
+  }
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

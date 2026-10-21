@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/library_screen.dart';
+import 'services/app_icon.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const RomRunnerApp());
+  AppIcons.instance.load();
 }
 
 class RomRunnerApp extends StatelessWidget {

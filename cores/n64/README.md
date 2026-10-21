@@ -25,7 +25,7 @@ Until stage 3 lands, RDP command lists complete at once without drawing. RomRunn
 
 Besides its own tests, the core runs the community hardware test suites on every push: krom's CPU and RSP tests (public domain, [PeterLemon/N64](https://github.com/PeterLemon/N64)) and, when their assembler builds, Dillon's n64-tests. Results are checked against `test/suite_baseline.txt`; any test on that list that stops passing fails CI.
 
-**160 of 170** of krom's test cartridges pass. The rest:
+**186 of 196** pass: all 26 of Dillon's, and 160 of krom's 170. The rest:
 
 | Test | Why |
 |---|---|

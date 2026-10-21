@@ -30,7 +30,7 @@ done
 fetch() {
   local url=$1 inner=$2 dest=$3 tmp
   tmp=$(mktemp -d)
-  if curl -fsSL --retry 3 -o "$tmp/core.zip" "$url" && unzip -o -q "$tmp/core.zip" -d "$tmp" && [ -f "$tmp/$inner" ]; then
+  if curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o "$tmp/core.zip" "$url" && unzip -o -q "$tmp/core.zip" -d "$tmp" && [ -f "$tmp/$inner" ]; then
     mkdir -p "$(dirname "$dest")"
     mv -f "$tmp/$inner" "$dest"
     echo "  ok   $(basename "$dest")"

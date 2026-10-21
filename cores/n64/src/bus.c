@@ -295,6 +295,7 @@ void rcp_reg_write(N64 *n, uint32_t pa, uint32_t v) {
       switch (pa & 0x1F) {
         case 0x00: n->si.dram_addr = v & 0xFFFFF8; return;
         case 0x04: /* PIF RAM -> RDRAM */
+          pif_read(n);  /* the PIF polls the controllers again for every read */
           for (uint32_t i = 0; i < PIF_RAM_SIZE; i++)
             n->rdram[(n->si.dram_addr + i) & (RDRAM_SIZE - 1)] = n->pif_ram[i];
           n64_raise_mi(n, MI_INTR_SI);

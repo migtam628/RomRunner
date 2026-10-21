@@ -215,32 +215,49 @@ static void cic_6105_challenge(uint8_t *ram) {
   for (int i = 0; i < 15; i++) ram[0x30 + i] = (uint8_t)(rsp[i * 2] << 4 | rsp[i * 2 + 1]);
 }
 
+/* Runs every joybus command in PIF RAM, writing each reply in place. */
+static void joybus_run(N64 *n) {
+  uint8_t *ram = n->pif_ram;
+  int ch = 0, i = 0;
+  while (i < 63 && ch < 6) {
+    uint8_t t = ram[i];
+    if (t == 0xFE) break;                  /* end of commands */
+    if (t == 0xFF || t == 0xFD) { i++; continue; } /* padding / channel reset */
+    if (t == 0x00) { ch++; i++; continue; }        /* skip this channel */
+    int tx = t & 0x3F;
+    if (i + 1 >= 63) break;
+    uint8_t rbyte = ram[i + 1];
+    if (rbyte == 0xFE) break;
+    int rx = rbyte & 0x3F;
+    if (i + 2 + tx + rx > 63) break;
+    const uint8_t *cmd = &ram[i + 2];
+    uint8_t *resp = &ram[i + 2 + tx];
+    bool ok = ch < 4 ? controller_command(n, ch, cmd, tx, resp, rx) : ch == 4 ? eeprom_command(n, cmd, tx, resp, rx) : false;
+    ram[i + 1] = (uint8_t)(ok ? (rbyte & 0x3F) : (rbyte | 0x80)); /* 0x80: no device on this channel */
+    i += 2 + tx + rx;
+    ch++;
+  }
+}
+
+/* The CPU wrote PIF RAM. Bit 0 of byte 0x3F arms the joybus: the command
+ * list stays in PIF RAM and the PIF runs it again each time the CPU reads
+ * PIF RAM back. libultra relies on this: osContStartReadData writes the
+ * "read buttons" list once, then only reads, every frame. Running it only
+ * on the write left games seeing the controller as it was on that first
+ * frame, i.e. nothing ever pressed. */
 void pif_process(N64 *n) {
   uint8_t *ram = n->pif_ram;
   uint8_t ctrl = ram[63];
   if (ctrl & 0x01) {
-    int ch = 0, i = 0;
-    while (i < 63 && ch < 6) {
-      uint8_t t = ram[i];
-      if (t == 0xFE) break;                  /* end of commands */
-      if (t == 0xFF || t == 0xFD) { i++; continue; } /* padding / channel reset */
-      if (t == 0x00) { ch++; i++; continue; }        /* skip this channel */
-      int tx = t & 0x3F;
-      if (i + 1 >= 63) break;
-      uint8_t rbyte = ram[i + 1];
-      if (rbyte == 0xFE) break;
-      int rx = rbyte & 0x3F;
-      if (i + 2 + tx + rx > 63) break;
-      const uint8_t *cmd = &ram[i + 2];
-      uint8_t *resp = &ram[i + 2 + tx];
-      bool ok = ch < 4 ? controller_command(n, ch, cmd, tx, resp, rx) : ch == 4 ? eeprom_command(n, cmd, tx, resp, rx) : false;
-      if (!ok) ram[i + 1] |= 0x80;           /* no device on this channel */
-      i += 2 + tx + rx;
-      ch++;
-    }
+    n->joybus_armed = true;
+    joybus_run(n);
   }
   if (ctrl & 0x02) cic_6105_challenge(ram);
   /* Command bits are acknowledged by clearing them. 0x08 ends the boot
    * handshake; 0x20 (checksum verify) isn't needed with the HLE boot. */
   ram[63] = (uint8_t)(ctrl & ~(0x01 | 0x02 | 0x08 | 0x20 | 0x30));
+}
+
+void pif_read(N64 *n) {
+  if (n->joybus_armed) joybus_run(n);
 }

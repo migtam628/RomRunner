@@ -210,6 +210,7 @@ typedef struct N64 {
   uint8_t dmem[0x1000];
   uint8_t imem[0x1000];
   uint8_t pif_ram[PIF_RAM_SIZE];
+  bool joybus_armed;           /* a command list was written with 0x3F bit 0; every PIF read re-runs it */
 
   SaveType save_type;
   uint8_t eeprom[2048];
@@ -275,7 +276,8 @@ void rdp_run(N64 *n);   /* executes DPC_CURRENT..DPC_END */
 
 /* ---- PIF / joybus / boot (pif.c) ---- */
 void pif_hle_boot(N64 *n);
-void pif_process(N64 *n);
+void pif_process(N64 *n);    /* after the CPU writes PIF RAM */
+void pif_read(N64 *n);       /* before the CPU reads PIF RAM (SI DMA PIF -> RDRAM) */
 uint32_t cic_detect(const uint8_t *rom, uint32_t size);
 SaveType save_guess(const uint8_t *rom, uint32_t size);
 

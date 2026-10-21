@@ -82,6 +82,11 @@ typedef struct {
   uint32_t fcr31;
 
   uint64_t cycles;    /* total CPU cycles executed */
+  /* Idle detection: the CPU re-reading the same RCP register at the same pc
+   * with nothing changing is waiting; the rest of its time slice is skipped. */
+  uint64_t poll_pc;
+  uint32_t poll_addr, poll_value, poll_count;
+  bool idle;
 } Cpu;
 
 typedef struct {
@@ -121,6 +126,31 @@ typedef struct {
   uint32_t start, end, current, status, clock, bufbusy, pipebusy, tmem;
 } DpRegs;
 
+/* RDP: the rasteriser. */
+typedef struct {
+  uint32_t format, size, line, tmem, palette;
+  bool ct, mt, cs, ms;
+  uint32_t mask_t, shift_t, mask_s, shift_s;
+  uint32_t sl, tl, sh, th;   /* 10.2 fixed point */
+} RdpTile;
+
+typedef struct {
+  uint64_t other;            /* Set Other Modes, raw */
+  uint64_t combine;          /* Set Combine Mode, raw */
+  uint32_t fill, fog, blend, prim, env;
+  uint32_t prim_z, prim_dz, prim_min_level, prim_lod_frac;
+  uint32_t key_r, key_g, key_b, convert[6];
+  uint32_t sc_xh, sc_yh, sc_xl, sc_yl; /* scissor, 10.2 */
+  bool sc_field, sc_odd;
+  uint32_t ti_format, ti_size, ti_width, ti_addr;
+  uint32_t ci_format, ci_size, ci_width, ci_addr;
+  uint32_t zi_addr;
+  RdpTile tile[8];
+  uint8_t tmem[4096];
+  uint64_t cmd[44];          /* a command split across two DPC_END writes */
+  uint32_t cmd_len;
+} Rdp;
+
 /* RSP: a MIPS-like scalar unit plus the vector unit (COP2). */
 typedef struct {
   uint32_t r[32];
@@ -152,6 +182,7 @@ typedef struct N64 {
   SpRegs sp;
   DpRegs dp;
   Rsp rsp;
+  Rdp rdp;
   uint32_t ri[8];
 
   uint8_t rdram[RDRAM_SIZE];   /* big-endian bytes, as on the console */
@@ -216,6 +247,9 @@ void ai_tick(N64 *n, uint32_t cycles);
 void rsp_run(N64 *n, uint32_t cycles);
 uint32_t rcp_reg_read(N64 *n, uint32_t pa);
 void rcp_reg_write(N64 *n, uint32_t pa, uint32_t v);
+
+/* ---- RDP (rdp.c) ---- */
+void rdp_run(N64 *n);   /* executes DPC_CURRENT..DPC_END */
 
 /* ---- PIF / joybus / boot (pif.c) ---- */
 void pif_hle_boot(N64 *n);

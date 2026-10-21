@@ -6,7 +6,7 @@ CFLAGS ?= -O2
 CFLAGS += -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -fPIC -Isrc -I../../packages/romrunner_core/src/third_party
 LDLIBS = -lm
 
-SRC = src/cpu.c src/fpu.c src/rsp.c src/bus.c src/pif.c src/vi.c src/n64.c src/libretro.c
+SRC = src/cpu.c src/fpu.c src/rsp.c src/rdp.c src/bus.c src/pif.c src/vi.c src/n64.c src/libretro.c
 OBJ = $(SRC:src/%.c=build/%.o)
 
 UNAME := $(shell uname -s)
@@ -39,6 +39,9 @@ build/system_test: test/system_test.c test/asm.h $(OBJ)
 build/rsp_test: test/rsp_test.c $(OBJ)
 	$(CC) $(CFLAGS) -o $@ test/rsp_test.c $(OBJ) $(LDLIBS)
 
+build/rdp_test: test/rdp_test.c $(OBJ)
+	$(CC) $(CFLAGS) -o $@ test/rdp_test.c $(OBJ) $(LDLIBS)
+
 build/romtest: test/romtest.c $(OBJ)
 	$(CC) $(CFLAGS) -o $@ test/romtest.c $(OBJ) $(LDLIBS)
 
@@ -47,9 +50,10 @@ build/chksum64: test/chksum64.c $(OBJ)
 
 tools: build/romtest build/chksum64
 
-test: build/cpu_test build/rsp_test build/system_test build/romtest
+test: build/cpu_test build/rsp_test build/rdp_test build/system_test build/romtest
 	./build/cpu_test
 	./build/rsp_test
+	./build/rdp_test
 	./build/system_test
 
 clean:

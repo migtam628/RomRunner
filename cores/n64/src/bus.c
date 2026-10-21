@@ -3,8 +3,7 @@
  * RDRAM, RSP memory/registers, RDP command registers, MI, VI, AI, PI, RI,
  * SI, the cartridge domains and PIF RAM.
  *
- * Stage 2 note: the RSP runs (rsp.c); the RDP is not emulated yet, so RDP
- * command lists complete at once.
+ * The RSP (rsp.c) and RDP (rdp.c) are driven from here.
  */
 #include <string.h>
 
@@ -190,10 +189,9 @@ void rcp_reg_write(N64 *n, uint32_t pa, uint32_t v) {
       switch (r & 7) {
         case 0: n->dp.start = n->dp.current = v & 0xFFFFF8; return;
         case 1:
-          /* No RDP yet (stage 3): the command list completes at once. */
+          /* Draw everything up to the new end (SYNC_FULL raises the interrupt). */
           n->dp.end = v & 0xFFFFF8;
-          n->dp.current = n->dp.end;
-          n64_raise_mi(n, MI_INTR_DP);
+          if (!(n->dp.status & 2)) rdp_run(n);  /* not frozen */
           return;
         case 3: {
           uint32_t st = n->dp.status;
@@ -317,7 +315,19 @@ static inline bool is_rcp(uint32_t pa) { return pa >= 0x04000000u && pa < 0x0490
 
 bool bus_read32(N64 *n, uint32_t pa, uint32_t *v) {
   if (pa < RDRAM_SIZE) { *v = rd32be(n->rdram + pa); return true; }
-  if (is_rcp(pa)) { *v = rcp_reg_read(n, pa); return true; }
+  if (is_rcp(pa)) {
+    *v = rcp_reg_read(n, pa);
+    Cpu *c = &n->cpu;
+    if (c->cur_pc == c->poll_pc && pa == c->poll_addr && *v == c->poll_value) {
+      if (++c->poll_count >= 8) c->idle = true;
+    } else {
+      c->poll_pc = c->cur_pc;
+      c->poll_addr = pa;
+      c->poll_value = *v;
+      c->poll_count = 0;
+    }
+    return true;
+  }
   if (pa >= 0x10000000u && pa < 0x1FC00000u) {
     uint32_t o = pa - 0x10000000u;
     /* Past the end of the ROM the bus returns the low address bits. */

@@ -58,12 +58,26 @@ static void dump_screen(N64 *n) {
   if (!path) return;
   static uint32_t px[640 * 480];
   uint32_t w, h;
-  if (getenv("ROMTEST_RAW") && (n->vi.ctrl & 3) == 3 && n->vi.width <= 640) {
+  if (getenv("ROMTEST_RAW") && (n->vi.ctrl & 3) >= 2 && n->vi.width <= 640) {
     /* The framebuffer as drawn (the tests draw 240 lines), for comparing
      * against the reference screenshots. */
+    /* Height from the VI registers, rounded up to the drawn height
+     * (e.g. 237 visible lines of a 240-line framebuffer). */
+    uint32_t vw, vh;
+    static uint32_t tmp[640 * 480];
+    if (!vi_render(n, tmp, 640, 480, &vw, &vh)) return;
     w = n->vi.width;
-    h = 240;
-    for (uint32_t i = 0; i < w * h; i++) px[i] = rd32be(n->rdram + ((n->vi.origin + i * 4) & (RDRAM_SIZE - 4))) >> 8;
+    h = (vh + 7) / 8 * 8;
+    if (h > 480) h = 480;
+    for (uint32_t i = 0; i < w * h; i++) {
+      if ((n->vi.ctrl & 3) == 3) {
+        px[i] = rd32be(n->rdram + ((n->vi.origin + i * 4) & (RDRAM_SIZE - 4))) >> 8;
+      } else {
+        uint16_t p = rd16be(n->rdram + ((n->vi.origin + i * 2) & (RDRAM_SIZE - 2)));
+        uint32_t r5 = p >> 11, g5 = (p >> 6) & 31, b5 = (p >> 1) & 31;
+        px[i] = ((r5 << 3 | r5 >> 2) << 16) | ((g5 << 3 | g5 >> 2) << 8) | (b5 << 3 | b5 >> 2);
+      }
+    }
   } else if (!vi_render(n, px, 640, 480, &w, &h)) {
     return;
   }
@@ -93,8 +107,9 @@ static void count_words(N64 *n, int *pass, int *fail) {
 int main(int argc, char **argv) {
   bool krom = argc == 5 && !strcmp(argv[1], "--krom");
   bool r30 = argc == 3 && !strcmp(argv[1], "--r30");
-  if (!krom && !r30) {
-    fprintf(stderr, "usage: romtest --r30 rom | --krom rom FontRed.bin FontGreen.bin\n");
+  bool shot = argc == 4 && !strcmp(argv[1], "--shot");  /* --shot rom frames: run, then save the screen */
+  if (!krom && !r30 && !shot) {
+    fprintf(stderr, "usage: romtest --r30 rom | --krom rom FontRed.bin FontGreen.bin | --shot rom frames\n");
     return 2;
   }
   size_t size, fs;
@@ -113,6 +128,13 @@ int main(int argc, char **argv) {
   n64_reset(n);
 
   const char *name = base_name(argv[2]);
+  if (shot) {
+    int frames = atoi(argv[3]);
+    for (int i = 0; i < frames; i++) n64_run_frame(n);
+    dump_screen(n);
+    printf("%s SHOT\n", name);
+    return 0;
+  }
   int last_total = -1, stable = 0;
   for (int frame = 1; frame <= 1200; frame++) {
     n64_run_frame(n);

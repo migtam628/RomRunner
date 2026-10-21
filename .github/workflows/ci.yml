@@ -89,7 +89,7 @@ jobs:
       - name: Fetch krom's test ROMs (public domain)
         run: |
           git clone -q --depth 1 --filter=blob:none --sparse https://github.com/PeterLemon/N64 /tmp/krom
-          git -C /tmp/krom sparse-checkout set CPUTest RSPTest
+          git -C /tmp/krom sparse-checkout set CPUTest RSPTest RDP
       - name: Build Dillon's n64-tests
         continue-on-error: true
         run: |

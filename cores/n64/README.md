@@ -15,24 +15,26 @@ make test     # CPU and system tests
 |---|---|---|
 | 1 | Main processor (VR4300) with floating point, virtual memory (TLB), exceptions and interrupts; memory map; cartridge loading in .z64/.v64/.n64 order; boot without a PIF ROM or BIOS; CIC detection; video output; audio DMA; controllers and EEPROM over the PIF; save states | **done** |
 | 2 | RSP: the scalar unit, the vector unit (multiply-accumulate, clip compares, reciprocal/inverse square root, all vector loads and stores), SP DMA, and running in step with the CPU, so games' own audio and graphics microcode runs | **done** |
-| 3 | RDP: the 3D graphics chip, drawn in software | next |
+| 3 | RDP, drawn in software: triangles with shade/texture/depth interpolation and perspective-correct textures, texture and fill rectangles, fill/copy/1-cycle/2-cycle modes, TMEM loads (block, tile, TLUT), every texture format except YUV, point and 3-point bilinear filtering, wrap/mirror/clamp, the colour combiner (with its 9-bit overflow rule), the blender, Z buffer, 16/32-bit framebuffers | **first pass done** |
 | 4 | Saves: SRAM, FlashRAM, a save-type database, controller pak | partial (EEPROM, SRAM) |
 | 5 | Speed: a JIT translator for ARM64 and x86-64, and GPU drawing | |
 
-Until stage 3 lands, RDP command lists complete at once without drawing. RomRunner still opens N64 games in an outside emulator by default.
+Not yet in the RDP: antialiasing/coverage, dithering, mipmap LOD selection, YUV textures. RomRunner still opens N64 games in an outside emulator by default; the built-in core is not wired into the app yet.
+
+krom's N64NICCC polygon demo (RSP + RDP streaming) renders correctly at about 2.3x full speed on a desktop CPU.
 
 ## Test cartridges
 
 Besides its own tests, the core runs the community hardware test suites on every push: krom's CPU and RSP tests (public domain, [PeterLemon/N64](https://github.com/PeterLemon/N64)) and, when their assembler builds, Dillon's n64-tests. Results are checked against `test/suite_baseline.txt`; any test on that list that stops passing fails CI.
 
-**186 of 196** pass: all 26 of Dillon's, and 160 of krom's 170. The rest:
+**238 of 323** pass: all 26 of Dillon's, 160 of krom's 170 CPU/RSP tests, and 52 of krom's 127 RDP tests. RDP tests are compared with their reference screenshots and pass at 99% of pixels matching (many of the rest are at 92 to 98%: texture filtering and edge rules still differ slightly; 7 are animated or interactive and can't be compared by screenshot; 4 need YUV textures). The CPU/RSP ones that fail:
 
 | Test | Why |
 |---|---|
 | CPUTIMINGNTSC, CP1TIMINGNTSC | Exact per-instruction cycle timing (stage 5) |
 | DMAAlignment-PI-ROM-FROM | 24 of 28 checks; the rest are post-boot register values and 8/16-bit cartridge reads games don't do |
 | RSPCP2 VACC, VSAC, VEXTN/Q/T, V073 | Reserved vector opcodes no game uses |
-| RSPXBUSRDP | Needs the RDP (stage 3) |
+| RSPXBUSRDP | Reports through the RDP; not checked yet |
 
 ```
 make tools
@@ -47,6 +49,7 @@ python3 test/suites.py --romtest build/romtest --krom <PeterLemon/N64 checkout> 
 | `src/cpu.c` | VR4300 interpreter: integer unit, COP0, TLB, exceptions |
 | `src/fpu.c` | COP1: single/double precision, conversions, FR=0/1 register models |
 | `src/rsp.c` | RSP: scalar unit, vector unit (COP2), vector loads/stores, SP/DP access |
+| `src/rdp.c` | RDP: command decoder, rasteriser, TMEM, texture sampling, combiner, blender, Z buffer |
 | `src/bus.c` | Physical memory map, MI/VI/AI/PI/SI/RI, SP and DP registers, DMA |
 | `src/pif.c` | High-level boot, joybus (controllers, EEPROM), CIC and save-type detection |
 | `src/vi.c` | Framebuffer to XRGB8888 output |
@@ -55,6 +58,7 @@ python3 test/suites.py --romtest build/romtest --krom <PeterLemon/N64 checkout> 
 | `test/asm.h` | A small MIPS encoder for writing test programs in C |
 | `test/cpu_test.c` | 148 checks against the documented instruction behaviour |
 | `test/rsp_test.c` | 24 checks of the vector unit |
+| `test/rdp_test.c` | 11 checks: fill mode, triangles, copy-mode texture rectangles, SYNC_FULL |
 | `test/romtest.c` | Runs one community test cartridge and reads its result |
 | `test/suites.py` | Runs all of them, compares screenshot-only tests with their reference images, checks the baseline |
 | `test/chksum64.c` | Writes the boot checksum into a ROM header (for building test ROMs) |
@@ -66,4 +70,4 @@ B → A · Y → B · L2/R2 → Z · L → L · R → R · Start → Start · X 
 
 ## Speed
 
-The interpreter runs about 100 million CPU instructions a second on a desktop CPU (with the RSP stepping alongside), around full speed for simple code. Phones will need the stage 5 JIT.
+Fast paths for unmapped RDRAM accesses and skipping the CPU's polling loops (with Count kept exact) put the N64NICCC demo at about 2.3x full speed on a desktop CPU. Phones will need the stage 5 JIT.

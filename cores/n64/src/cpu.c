@@ -128,7 +128,16 @@ static bool translate(N64 *n, uint64_t va, Access acc, uint32_t *pa) {
 /* ------------------------------------------------------------------ */
 /* Loads and stores through the MMU                                     */
 
+/* KSEG0/KSEG1 addresses that land in RDRAM skip translation and the bus. */
+static inline uint8_t *direct(N64 *n, uint64_t va, uint32_t size) {
+  if ((va & 0xFFFFFFFFC0000000ull) != 0xFFFFFFFF80000000ull) return NULL;
+  uint32_t pa = (uint32_t)va & 0x1FFFFFFF;
+  return pa + size <= RDRAM_SIZE ? n->rdram + pa : NULL;
+}
+
 static bool ld8(N64 *n, uint64_t va, uint8_t *v) {
+  uint8_t *d = direct(n, va, 1);
+  if (d) { *v = *d; return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_LOAD, &pa)) return false;
   bus_read8(n, pa, v);
@@ -136,6 +145,8 @@ static bool ld8(N64 *n, uint64_t va, uint8_t *v) {
 }
 static bool ld16(N64 *n, uint64_t va, uint16_t *v) {
   if (va & 1) { address_error(n, va, false); return false; }
+  uint8_t *d = direct(n, va, 2);
+  if (d) { *v = rd16be(d); return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_LOAD, &pa)) return false;
   bus_read16(n, pa, v);
@@ -143,6 +154,8 @@ static bool ld16(N64 *n, uint64_t va, uint16_t *v) {
 }
 static bool ld32(N64 *n, uint64_t va, uint32_t *v) {
   if (va & 3) { address_error(n, va, false); return false; }
+  uint8_t *d = direct(n, va, 4);
+  if (d) { *v = rd32be(d); return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_LOAD, &pa)) return false;
   bus_read32(n, pa, v);
@@ -150,12 +163,16 @@ static bool ld32(N64 *n, uint64_t va, uint32_t *v) {
 }
 static bool ld64(N64 *n, uint64_t va, uint64_t *v) {
   if (va & 7) { address_error(n, va, false); return false; }
+  uint8_t *d = direct(n, va, 8);
+  if (d) { *v = rd64be(d); return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_LOAD, &pa)) return false;
   bus_read64(n, pa, v);
   return true;
 }
 static bool st8(N64 *n, uint64_t va, uint8_t v) {
+  uint8_t *d = direct(n, va, 1);
+  if (d) { *d = v; return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_STORE, &pa)) return false;
   bus_write8(n, pa, v);
@@ -163,6 +180,8 @@ static bool st8(N64 *n, uint64_t va, uint8_t v) {
 }
 static bool st16(N64 *n, uint64_t va, uint16_t v) {
   if (va & 1) { address_error(n, va, true); return false; }
+  uint8_t *d = direct(n, va, 2);
+  if (d) { wr16be(d, v); return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_STORE, &pa)) return false;
   bus_write16(n, pa, v);
@@ -170,6 +189,8 @@ static bool st16(N64 *n, uint64_t va, uint16_t v) {
 }
 static bool st32(N64 *n, uint64_t va, uint32_t v) {
   if (va & 3) { address_error(n, va, true); return false; }
+  uint8_t *d = direct(n, va, 4);
+  if (d) { wr32be(d, v); return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_STORE, &pa)) return false;
   bus_write32(n, pa, v);
@@ -177,6 +198,8 @@ static bool st32(N64 *n, uint64_t va, uint32_t v) {
 }
 static bool st64(N64 *n, uint64_t va, uint64_t v) {
   if (va & 7) { address_error(n, va, true); return false; }
+  uint8_t *d = direct(n, va, 8);
+  if (d) { wr64be(d, v); return true; }
   uint32_t pa;
   if (!translate(n, va, ACC_STORE, &pa)) return false;
   bus_write64(n, pa, v);
@@ -741,13 +764,37 @@ void cpu_step(N64 *n) {
     return;
   }
   uint32_t pa, op;
-  if (!translate(n, c->pc, ACC_FETCH, &pa)) return;
-  bus_read32(n, pa, &op);
+  uint64_t pc = c->pc;
+  /* Fast path: KSEG0/KSEG1 code in RDRAM (nearly all code). */
+  if ((pc & 0xFFFFFFFFC0000000ull) == 0xFFFFFFFF80000000ull && (pa = (uint32_t)pc & 0x1FFFFFFF) < RDRAM_SIZE) {
+    op = rd32be(n->rdram + pa);
+  } else {
+    if (!translate(n, pc, ACC_FETCH, &pa)) return;
+    bus_read32(n, pa, &op);
+  }
   c->pc = c->next_pc;
   c->next_pc += 4;
   execute(n, op);
 }
 
 void cpu_run(N64 *n, uint32_t cycles) {
-  for (uint32_t i = 0; i < cycles; i++) cpu_step(n);
+  Cpu *c = &n->cpu;
+  for (uint32_t i = 0; i < cycles; i++) {
+    cpu_step(n);
+    if (c->idle) {
+      /* Waiting on the RCP: let the rest of the slice pass without
+       * executing it, keeping Count (and its Compare interrupt) right. */
+      c->idle = false;
+      c->poll_count = 0;
+      uint32_t rest = cycles - i - 1;
+      c->cycles += rest;
+      uint32_t ticks = (c->count_frac + rest) / 2;
+      c->count_frac = (c->count_frac + rest) % 2;
+      uint32_t before = (uint32_t)c->cp0[CP0_COUNT], cmp = (uint32_t)c->cp0[CP0_COMPARE];
+      uint32_t after = before + ticks;
+      if (ticks && (uint32_t)(cmp - before - 1) < ticks) c->cp0[CP0_CAUSE] |= 1ull << 15;
+      c->cp0[CP0_COUNT] = after;
+      return;
+    }
+  }
 }

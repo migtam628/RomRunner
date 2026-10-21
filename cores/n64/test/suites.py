@@ -93,6 +93,53 @@ def run_krom(romtest, rom, tmp):
     return name, status, detail
 
 
+def pixel_match(ppm, ref, tolerance=24):
+    """Percentage of pixels within tolerance of the reference (resized to ours)."""
+    if Image is None or not os.path.exists(ppm):
+        return None
+    a = Image.open(ppm).convert('RGB')
+    b = Image.open(ref).convert('RGB').resize(a.size, Image.NEAREST)
+    pa, pb = a.load(), b.load()
+    w, h = a.size
+    good = 0
+    for y in range(h):
+        for x in range(w):
+            p, q = pa[x, y], pb[x, y]
+            if abs(p[0] - q[0]) <= tolerance and abs(p[1] - q[1]) <= tolerance and abs(p[2] - q[2]) <= tolerance:
+                good += 1
+    return 100.0 * good / (w * h)
+
+
+def run_rdp(romtest, rom, tmp, frames=60):
+    """krom's RDP tests: run, then compare the screen with the reference
+    screenshot. References were captured either from the framebuffer or from
+    the scaled video output, so both are tried."""
+    base = os.path.splitext(rom)[0]
+    name = 'rdp/' + os.path.relpath(base, os.path.dirname(os.path.dirname(rom))).replace(os.sep, '/')
+    ref = base + '.png'
+    if not os.path.exists(ref):
+        pngs = sorted(glob.glob(os.path.join(os.path.dirname(rom), '*.png')))
+        if not pngs:
+            return name, 'SKIP', 'no reference'
+        ref = pngs[0]
+    best = None
+    for raw in ('', '1'):
+        ppm = os.path.join(tmp, name.replace('/', '_') + ('.raw' if raw else '') + '.ppm')
+        env = dict(os.environ, ROMTEST_PPM=ppm)
+        if raw:
+            env['ROMTEST_RAW'] = '1'
+        try:
+            subprocess.run([romtest, '--shot', rom, str(frames)], capture_output=True, timeout=300, env=env)
+        except subprocess.TimeoutExpired:
+            return name, 'TIMEOUT', 'over 300 s'
+        m = pixel_match(ppm, ref)
+        if m is not None and (best is None or m > best):
+            best = m
+    if best is None:
+        return name, 'SKIP', 'no screen'
+    return name, 'PASS' if best >= 99.0 else 'FAIL', f'{best:.2f}% of pixels match'
+
+
 def run_dillon(romtest, rom):
     name = os.path.splitext(os.path.basename(rom))[0]
     try:
@@ -120,6 +167,8 @@ def main():
             roms = [p for p in glob.glob(os.path.join(a.krom, '**', '*'), recursive=True)
                     if p.lower().endswith('.n64') and ('CPUTest' in p or 'RSPTest' in p)]
             jobs += [ex.submit(run_krom, a.romtest, r, tmp) for r in sorted(roms)]
+            rdp = [p for p in glob.glob(os.path.join(a.krom, 'RDP', '**', '*'), recursive=True) if p.lower().endswith('.n64')]
+            jobs += [ex.submit(run_rdp, a.romtest, r, tmp) for r in sorted(rdp)]
         if a.dillon:
             roms = [p for p in glob.glob(os.path.join(a.dillon, '*.z64')) if 'simpleboot' not in p]
             jobs += [ex.submit(run_dillon, a.romtest, r) for r in sorted(roms)]
@@ -132,15 +181,19 @@ def main():
     if a.update_baseline:
         with open(a.baseline, 'w') as f:
             f.write('# Test cartridges the core is known to pass (regenerate with --update-baseline)\n')
-            f.write('\n'.join(sorted(passed)) + '\n')
+            f.write('\n'.join(sorted(passed | {b for b in baseline if b not in {n for n, _, _ in results}})) + '\n')
 
-    regressions = sorted(baseline - passed)
+    ran = {n for n, _, _ in results}
+    regressions = sorted(b for b in baseline - passed if b in ran)
+    skipped = sorted(b for b in baseline if b not in ran)
     new = sorted(passed - baseline)
     lines = [f'## N64 core: {len(passed)} of {len(results)} test cartridges pass', '']
     if regressions:
         lines += ['**Regressions:** ' + ', '.join(regressions), '']
     if new:
         lines += ['Newly passing: ' + ', '.join(new), '']
+    if skipped:
+        lines += [f'Not run here: {len(skipped)} baseline tests (suite not provided)', '']
     lines += ['| Test | Result | Detail |', '|---|---|---|']
     lines += [f'| {n} | {s} | {d} |' for n, s, d in results]
     report = '\n'.join(lines)

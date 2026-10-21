@@ -18,12 +18,12 @@ CMake builds it for Windows (MSVC), Android (NDK), iOS and universal macOS; `too
 | 1 | Main processor (VR4300) with floating point, virtual memory (TLB), exceptions and interrupts; memory map; cartridge loading in .z64/.v64/.n64 order; boot without a PIF ROM or BIOS; CIC detection and the CIC-6105 challenge; video output; audio DMA; controllers and EEPROM over the PIF; save states | **done** |
 | 2 | RSP: the scalar unit, the vector unit (multiply-accumulate, clip compares, reciprocal/inverse square root, all vector loads and stores), SP DMA, and running in step with the CPU, so games' own audio and graphics microcode runs | **done** |
 | 3 | RDP, drawn in software: triangles with shade/texture/depth interpolation and perspective-correct textures, texture and fill rectangles, fill/copy/1-cycle/2-cycle modes, TMEM loads (block, tile, TLUT), every texture format except YUV, point and 3-point bilinear filtering, wrap/mirror/clamp, the colour combiner (with its 9-bit overflow rule), the blender, Z buffer, 16/32-bit framebuffers | **first pass done** |
-| 4 | Saves: SRAM, FlashRAM, a save-type database, controller pak | partial (EEPROM, SRAM) |
+| 4 | Saves: SRAM, FlashRAM, a save-type database, controller pak | **mostly done** (EEPROM 4K/16K, SRAM, FlashRAM; no controller pak yet) |
 | 5 | Speed: a JIT translator for ARM64 and x86-64, and GPU drawing | |
 
 Not yet in the RDP: antialiasing/coverage, dithering, mipmap LOD selection, YUV textures. RomRunner still opens N64 games in an outside emulator by default; this core is an experimental choice in Settings → Emulators → N64, shipped in every native release.
 
-krom's N64NICCC polygon demo (RSP + RDP streaming) renders correctly at about 2.3x full speed on a desktop CPU. Majora's Mask boots through its intro.
+krom's N64NICCC polygon demo (RSP + RDP streaming) renders correctly at about 2.3x full speed on a desktop CPU. Majora's Mask plays: intro, title screen with Clock Town, file select and naming, and its FlashRAM save survives a restart.
 
 ## Test cartridges
 
@@ -52,6 +52,8 @@ python3 test/suites.py --romtest build/romtest --krom <PeterLemon/N64 checkout> 
 | `src/fpu.c` | COP1: single/double precision, conversions, FR=0/1 register models |
 | `src/rsp.c` | RSP: scalar unit, vector unit (COP2), vector loads/stores, SP/DP access |
 | `src/rdp.c` | RDP: command decoder, rasteriser, TMEM, texture sampling, combiner, blender, Z buffer |
+| `src/rdp_thread.c` | Optional worker thread that draws RDP commands in parallel (on in the app, off in tests) |
+| `src/flash.c` | FlashRAM: status/read/write/erase command protocol |
 | `src/bus.c` | Physical memory map, MI/VI/AI/PI/SI/RI, SP and DP registers, DMA |
 | `src/pif.c` | High-level boot, joybus (controllers, EEPROM), CIC and save-type detection |
 | `src/vi.c` | Framebuffer to XRGB8888 output |
@@ -62,9 +64,10 @@ python3 test/suites.py --romtest build/romtest --krom <PeterLemon/N64 checkout> 
 | `test/rsp_test.c` | 24 checks of the vector unit |
 | `test/rdp_test.c` | 11 checks: fill mode, triangles, copy-mode texture rectangles, SYNC_FULL |
 | `test/romtest.c` | Runs one community test cartridge and reads its result |
+| `test/play.c` | Runs a real game with scripted button presses, saves screenshots and the save file, prints the speed |
 | `test/suites.py` | Runs all of them, compares screenshot-only tests with their reference images, checks the baseline |
 | `test/chksum64.c` | Writes the boot checksum into a ROM header (for building test ROMs) |
-| `test/system_test.c` | Builds a cartridge in memory and checks boot, video, controller input, audio, save states and .v64 loading through the libretro API |
+| `test/system_test.c` | Builds a cartridge in memory and checks boot, video, controller input, audio, save states, .v64 loading, the CIC-6105 challenge and FlashRAM |
 
 ## Controls (RetroPad → N64)
 
@@ -72,4 +75,6 @@ B → A · Y → B · L2/R2 → Z · L → L · R → R · Start → Start · X 
 
 ## Speed
 
-Fast paths for unmapped RDRAM accesses and skipping the CPU's polling loops (with Count kept exact) put the N64NICCC demo at about 2.3x full speed on a desktop CPU. Phones will need the stage 5 JIT.
+Fast paths for unmapped RDRAM accesses and skipping the CPU's polling loops (with Count kept exact) put the N64NICCC demo at about 2.3x full speed on a desktop CPU.
+
+For real games: the CPU applies Count, Random and interrupt checks in batches instead of every instruction (the timer interrupt still lands on the exact instruction), the combiner is decoded once per mode change instead of per pixel, and the RDP draws on a second core (core option `rrn64_rdp_thread`, on by default). Majora's Mask went from 69% to 99% of full speed on a 2.1 GHz Xeon (`test/play.c`). Slower phones will still need the stage 5 JIT.

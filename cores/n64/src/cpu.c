@@ -263,7 +263,13 @@ static void tlb_write(Cpu *c, uint32_t i) {
   e->global = (c->cp0[CP0_ENTRYLO0] & c->cp0[CP0_ENTRYLO1] & 1) != 0;
 }
 
+static void cpu_sync(Cpu *c);
+
 static void cop0(N64 *n, uint32_t op) {
+  /* COP0 reads and writes Count/Random/Compare/Status: bring the batched
+   * timers up to date first, and re-check interrupts after. */
+  cpu_sync(&n->cpu);
+  n->cpu.irq_check = true;
   Cpu *c = &n->cpu;
   uint32_t rt = RT(op), rd = RD(op);
   switch (RS(op)) {
@@ -736,32 +742,39 @@ static inline bool interrupt_pending(Cpu *c) {
   return (c->cp0[CP0_CAUSE] & st & 0xFF00) != 0;
 }
 
-void cpu_step(N64 *n) {
+/* Apply the instructions counted in c->pending to cycles, Count (half the
+ * pipeline clock; Count == Compare raises IP7) and Random (counts down
+ * from 31 to Wired, one step per instruction). */
+static void cpu_sync(Cpu *c) {
+  uint32_t p = c->pending;
+  if (!p) return;
+  c->pending = 0;
+  c->cycles += p;
+  uint32_t ticks = (c->count_frac + p) / 2;
+  c->count_frac = (c->count_frac + p) % 2;
+  if (ticks) {
+    uint32_t before = (uint32_t)c->cp0[CP0_COUNT], cmp = (uint32_t)c->cp0[CP0_COMPARE];
+    if ((uint32_t)(cmp - before - 1) < ticks) { c->cp0[CP0_CAUSE] |= 1ull << 15; c->irq_check = true; }
+    c->cp0[CP0_COUNT] = before + ticks;
+  }
+  uint32_t wired = (uint32_t)c->cp0[CP0_WIRED] & 0x3F;
+  if (wired > 31) {
+    c->cp0[CP0_RANDOM] = 31;
+  } else {
+    uint32_t period = 32 - wired, rnd = (uint32_t)c->cp0[CP0_RANDOM];
+    uint32_t pos = rnd >= wired && rnd <= 31 ? 31 - rnd : 0;
+    c->cp0[CP0_RANDOM] = 31 - (pos + p) % period;
+  }
+}
+
+static inline bool fetch_execute(N64 *n) {
   Cpu *c = &n->cpu;
   c->cur_pc = c->pc;
   c->cur_delay = c->in_delay;
   c->in_delay = false;
-
-  /* Count runs at half the pipeline clock; Count == Compare raises IP7. */
-  c->cycles++;
-  if (++c->count_frac >= 2) {
-    c->count_frac = 0;
-    uint32_t cnt = (uint32_t)c->cp0[CP0_COUNT] + 1;
-    c->cp0[CP0_COUNT] = cnt;
-    if (cnt == (uint32_t)c->cp0[CP0_COMPARE]) c->cp0[CP0_CAUSE] |= 1ull << 15;
-  }
-  uint32_t wired = (uint32_t)c->cp0[CP0_WIRED] & 31;
-  uint32_t rnd = (uint32_t)c->cp0[CP0_RANDOM];
-  c->cp0[CP0_RANDOM] = (rnd <= wired || rnd == 0) ? 31 : rnd - 1;
-
-  if (interrupt_pending(c)) {
-    exception(n, EXC_INT, 0x180, 0);
-    return;
-  }
-
   if (c->pc & 3) {
     address_error(n, c->pc, false);
-    return;
+    return false;
   }
   uint32_t pa, op;
   uint64_t pc = c->pc;
@@ -769,32 +782,79 @@ void cpu_step(N64 *n) {
   if ((pc & 0xFFFFFFFFC0000000ull) == 0xFFFFFFFF80000000ull && (pa = (uint32_t)pc & 0x1FFFFFFF) < RDRAM_SIZE) {
     op = rd32be(n->rdram + pa);
   } else {
-    if (!translate(n, pc, ACC_FETCH, &pa)) return;
+    if (!translate(n, pc, ACC_FETCH, &pa)) return false;
     bus_read32(n, pa, &op);
   }
   c->pc = c->next_pc;
   c->next_pc += 4;
   execute(n, op);
+  return true;
+}
+
+/* One instruction with exact timing: the timers advance, then a pending
+ * interrupt is taken instead of the instruction. */
+void cpu_step(N64 *n) {
+  Cpu *c = &n->cpu;
+  c->pending++;
+  cpu_sync(c);
+  c->irq_check = false;
+  if (interrupt_pending(c)) {
+    c->cur_pc = c->pc;
+    c->cur_delay = c->in_delay;
+    c->in_delay = false;
+    exception(n, EXC_INT, 0x180, 0);
+    return;
+  }
+  fetch_execute(n);
+}
+
+/* Instructions until the one whose Count tick reaches Compare (>= 1). */
+static uint32_t steps_to_compare(const Cpu *c) {
+  uint32_t ticks = (uint32_t)c->cp0[CP0_COMPARE] - (uint32_t)c->cp0[CP0_COUNT];
+  if (ticks == 0) ticks = 0xFFFFFFFFu;  /* just passed: a full wrap away */
+  uint64_t steps = (uint64_t)ticks * 2 - c->count_frac;
+  return steps > 0xFFFFFFFFull ? 0xFFFFFFFFu : (uint32_t)steps;
 }
 
 void cpu_run(N64 *n, uint32_t cycles) {
   Cpu *c = &n->cpu;
-  for (uint32_t i = 0; i < cycles; i++) {
-    cpu_step(n);
-    if (c->idle) {
-      /* Waiting on the RCP: let the rest of the slice pass without
-       * executing it, keeping Count (and its Compare interrupt) right. */
-      c->idle = false;
-      c->poll_count = 0;
-      uint32_t rest = cycles - i - 1;
-      c->cycles += rest;
-      uint32_t ticks = (c->count_frac + rest) / 2;
-      c->count_frac = (c->count_frac + rest) % 2;
-      uint32_t before = (uint32_t)c->cp0[CP0_COUNT], cmp = (uint32_t)c->cp0[CP0_COMPARE];
-      uint32_t after = before + ticks;
-      if (ticks && (uint32_t)(cmp - before - 1) < ticks) c->cp0[CP0_CAUSE] |= 1ull << 15;
-      c->cp0[CP0_COUNT] = after;
-      return;
+  c->irq_check = true;
+  uint32_t i = 0;
+  while (i < cycles) {
+    /* Run freely up to (not including) the step that hits Compare; that
+     * one goes through cpu_step so the timer interrupt lands exactly. */
+    uint32_t to_cmp = steps_to_compare(c);
+    uint32_t free = cycles - i < to_cmp ? cycles - i : to_cmp - 1;
+    if (free == 0) {
+      cpu_step(n);
+      i++;
+    }
+    for (uint32_t k = 0; k < free; k++) {
+      c->pending++;
+      i++;
+      if (c->irq_check) {
+        c->irq_check = false;
+        if (interrupt_pending(c)) {
+          cpu_sync(c);
+          c->cur_pc = c->pc;
+          c->cur_delay = c->in_delay;
+          c->in_delay = false;
+          exception(n, EXC_INT, 0x180, 0);
+          break;   /* Status changed: recompute the free run */
+        }
+      }
+      fetch_execute(n);
+      if (c->idle) {
+        /* Waiting on the RCP: let the rest of the slice pass without
+         * executing it, keeping Count (and its Compare interrupt) right. */
+        c->idle = false;
+        c->poll_count = 0;
+        c->pending += cycles - i;
+        cpu_sync(c);
+        return;
+      }
+      if (c->pending == 0) break;  /* a COP0 op synced: Compare may have moved */
     }
   }
+  cpu_sync(c);
 }

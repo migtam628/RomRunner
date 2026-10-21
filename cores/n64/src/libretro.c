@@ -25,6 +25,7 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
   env_cb = cb;
   static const struct retro_variable vars[] = {
       {"rrn64_dpad_stick", "D-pad moves the analog stick; on|off"},
+      {"rrn64_rdp_thread", "Draw graphics on a second CPU core; on|off"},
       {NULL, NULL},
   };
   cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void *)vars);
@@ -77,6 +78,9 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
   }
   g_n->pad_connected[0] = true;
   n64_reset(g_n);
+  struct retro_variable v = {"rrn64_rdp_thread", NULL};
+  bool threaded = !(env_cb && env_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) && v.value && !strcmp(v.value, "off"));
+  if (threaded) rdp_thread_start(g_n);   /* falls back to drawing inline */
   return true;
 }
 
@@ -86,6 +90,7 @@ RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_in
 }
 
 RETRO_API void retro_unload_game(void) {
+  if (g_n) rdp_thread_stop(g_n);
   free(g_n);
   free(g_rom);
   g_n = NULL;
@@ -177,12 +182,14 @@ RETRO_API size_t retro_serialize_size(void) { return offsetof(N64, rom); }
 
 RETRO_API bool retro_serialize(void *data, size_t size) {
   if (!g_n || size < offsetof(N64, rom)) return false;
+  rdp_thread_wait(g_n);
   memcpy(data, g_n, offsetof(N64, rom));
   return true;
 }
 
 RETRO_API bool retro_unserialize(const void *data, size_t size) {
   if (!g_n || size < offsetof(N64, rom)) return false;
+  rdp_thread_wait(g_n);
   memcpy(g_n, data, offsetof(N64, rom));
   return true;
 }

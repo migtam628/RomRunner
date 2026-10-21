@@ -17,7 +17,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 add_library(romrunner_n64 SHARED
-  src/cpu.c src/fpu.c src/rsp.c src/rdp.c src/bus.c src/pif.c src/vi.c src/n64.c src/libretro.c)
+  src/cpu.c src/fpu.c src/rsp.c src/rdp.c src/rdp_thread.c src/bus.c src/pif.c src/flash.c src/vi.c src/n64.c src/libretro.c)
 target_include_directories(romrunner_n64 PRIVATE src ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/romrunner_core/src/third_party)
 
 set(RRN64_OUTPUT_NAME "romrunner_n64_libretro" CACHE STRING "Library file name without prefix/suffix")
@@ -30,5 +30,9 @@ else()
   target_compile_options(romrunner_n64 PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
   if(NOT APPLE)
     target_link_libraries(romrunner_n64 PRIVATE m)
+  endif()
+  if(NOT ANDROID)
+    find_package(Threads REQUIRED)
+    target_link_libraries(romrunner_n64 PRIVATE Threads::Threads)
   endif()
 endif()

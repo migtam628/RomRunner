@@ -52,8 +52,11 @@ static void pi_dma(N64 *n, bool to_rdram, uint32_t len) {
   if (to_rdram && (da & 7) && len <= 128 - (da & 7)) count = len - (da & 7) > 0 ? len - (da & 7) : 0;
   for (uint32_t i = 0; i < count; i++) {
     uint32_t d = (da + i) & (RDRAM_SIZE - 1);
+    bool flash = n->save_type == SAVE_FLASH && ca >= 0x08000000u && ca < 0x10000000u;
     if (to_rdram) {
-      n->rdram[d] = cart_byte(n, ca + i);
+      n->rdram[d] = flash ? flash_dma_byte(n, ca, i) : cart_byte(n, ca + i);
+    } else if (flash) {
+      flash_dma_store(n, i, n->rdram[d]);
     } else if (ca + i >= 0x08000000u && ca + i < 0x08000000u + sizeof n->sram) {
       n->sram[ca + i - 0x08000000u] = n->rdram[d];
       n->save_dirty = true;
@@ -334,6 +337,7 @@ bool bus_read32(N64 *n, uint32_t pa, uint32_t *v) {
     *v = o + 3 < n->rom_size ? rd32be(n->rom + o) : ((pa & 0xFFFF) << 16 | (pa & 0xFFFF));
     return true;
   }
+  if (n->save_type == SAVE_FLASH && pa >= 0x08000000u && pa < 0x10000000u) { *v = flash_read32(n); return true; }
   if (pa >= 0x08000000u && pa < 0x08000000u + sizeof n->sram) { *v = rd32be(n->sram + (pa - 0x08000000u)); return true; }
   if (pa >= 0x1FC007C0u && pa < 0x1FC00800u) { *v = rd32be(n->pif_ram + (pa - 0x1FC007C0u)); return true; }
   *v = 0;
@@ -369,6 +373,10 @@ bool bus_read8(N64 *n, uint32_t pa, uint8_t *v) {
 bool bus_write32(N64 *n, uint32_t pa, uint32_t v) {
   if (pa < RDRAM_SIZE) { wr32be(n->rdram + pa, v); return true; }
   if (is_rcp(pa)) { rcp_reg_write(n, pa, v); return true; }
+  if (n->save_type == SAVE_FLASH && pa >= 0x08000000u && pa < 0x10000000u) {
+    if ((pa & 0x1FFFF) >= 0x10000) flash_command(n, v);   /* 0x08010000: command */
+    return true;
+  }
   if (pa >= 0x08000000u && pa < 0x08000000u + sizeof n->sram) {
     wr32be(n->sram + (pa - 0x08000000u), v);
     n->save_dirty = true;

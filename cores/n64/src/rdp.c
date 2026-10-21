@@ -176,71 +176,65 @@ static Col sample(Rdp *r, uint32_t tile, int32_t s, int32_t t, bool filter) {
 /* ------------------------------------------------------------------ */
 /* Colour combiner: (A - B) * C + D for RGB and alpha, one or two cycles */
 
-typedef struct {
-  Col combined, tex0, tex1, shade, prim, env;
-  int32_t lod_frac, prim_lod_frac;
-} CcIn;
+enum { S_COMB, S_T0, S_T1, S_PRIM, S_SHADE, S_ENV, S_256, S_255, S_128, S_ZERO, S_KEYC, S_KEYS, S_K4, S_K5, S_LOD, S_PLOD };
 
-static int32_t cc_a(const CcIn *in, uint32_t sel, int ch) {
-  const int32_t *c[] = {&in->combined.r, &in->tex0.r, &in->tex1.r, &in->prim.r, &in->shade.r, &in->env.r};
-  if (sel < 6) return c[sel][ch];
-  if (sel == 6) return 256;
-  if (sel == 7) return 128; /* noise (constant mid value for now) */
-  return 0;
+static inline uint8_t lane(int slot, int ch) { return (uint8_t)(slot * 4 + ch); }
+
+static void set_slot(int32_t *v, int slot, int32_t r, int32_t g, int32_t b, int32_t a) {
+  v[slot * 4] = r; v[slot * 4 + 1] = g; v[slot * 4 + 2] = b; v[slot * 4 + 3] = a;
 }
-static int32_t cc_b(const CcIn *in, uint32_t sel, int ch, const Rdp *r) {
-  const int32_t *c[] = {&in->combined.r, &in->tex0.r, &in->tex1.r, &in->prim.r, &in->shade.r, &in->env.r};
-  if (sel < 6) return c[sel][ch];
-  if (sel == 6) return (int32_t)((ch == 0 ? r->key_r : ch == 1 ? r->key_g : r->key_b) >> 16 & 0xFF); /* key centre */
-  if (sel == 7) return (int32_t)(r->convert[4]); /* K4 */
-  return 0;
-}
-static int32_t cc_c(const CcIn *in, uint32_t sel, int ch, const Rdp *r) {
-  const int32_t *c[] = {&in->combined.r, &in->tex0.r, &in->tex1.r, &in->prim.r, &in->shade.r, &in->env.r};
-  if (sel < 6) return c[sel][ch];
-  switch (sel) {
-    case 6: return (int32_t)((ch == 0 ? r->key_r : ch == 1 ? r->key_g : r->key_b) & 0xFF); /* key scale */
-    case 7: return in->combined.a;
-    case 8: return in->tex0.a;
-    case 9: return in->tex1.a;
-    case 10: return in->prim.a;
-    case 11: return in->shade.a;
-    case 12: return in->env.a;
-    case 13: return in->lod_frac;
-    case 14: return in->prim_lod_frac;
-    case 15: return (int32_t)r->convert[5]; /* K5 */
-    default: return 0;
+
+/* Decode the combine mode into slot offsets, and fill the constant slots. */
+static void cc_decode(Rdp *r) {
+  uint64_t m = r->combine;
+  for (int cyc = 0; cyc < 2; cyc++) {
+    uint32_t sa, sb, mu, ad, saa, sba, mua, ada;
+    if (cyc == 0) {
+      sa = (uint32_t)(m >> 52) & 15; mu = (uint32_t)(m >> 47) & 31; saa = (uint32_t)(m >> 44) & 7; mua = (uint32_t)(m >> 41) & 7;
+      sb = (uint32_t)(m >> 28) & 15; ad = (uint32_t)(m >> 15) & 7; sba = (uint32_t)(m >> 12) & 7; ada = (uint32_t)(m >> 9) & 7;
+    } else {
+      sa = (uint32_t)(m >> 37) & 15; mu = (uint32_t)(m >> 32) & 31; saa = (uint32_t)(m >> 21) & 7; mua = (uint32_t)(m >> 18) & 7;
+      sb = (uint32_t)(m >> 24) & 15; ad = (uint32_t)(m >> 6) & 7; sba = (uint32_t)(m >> 3) & 7; ada = (uint32_t)m & 7;
+    }
+    for (int ch = 0; ch < 3; ch++) {
+      /* A: colour inputs, 1.0 (256), noise; B: inputs, key centre, K4;
+       * C: inputs, key scale, any input's alpha, LOD fractions, K5;
+       * D: inputs, 1.0 (255). Anything else is 0. */
+      r->cc_rgb[cyc][0][ch] = sa < 6 ? lane((int)sa, ch) : sa == 6 ? lane(S_256, ch) : sa == 7 ? lane(S_128, ch) : lane(S_ZERO, ch);
+      r->cc_rgb[cyc][1][ch] = sb < 6 ? lane((int)sb, ch) : sb == 6 ? lane(S_KEYC, ch) : sb == 7 ? lane(S_K4, ch) : lane(S_ZERO, ch);
+      r->cc_rgb[cyc][2][ch] = mu < 6 ? lane((int)mu, ch) : mu == 6 ? lane(S_KEYS, ch)
+                            : mu <= 12 ? lane((int)mu - 7, 3) : mu == 13 ? lane(S_LOD, 0) : mu == 14 ? lane(S_PLOD, 0)
+                            : mu == 15 ? lane(S_K5, 0) : lane(S_ZERO, 0);
+      r->cc_rgb[cyc][3][ch] = ad < 6 ? lane((int)ad, ch) : ad == 6 ? lane(S_255, ch) : lane(S_ZERO, ch);
+    }
+    /* Alpha A, B, D: inputs' alpha or 1.0 (255); C: LOD fraction, inputs'
+     * alpha (no combined), primitive LOD fraction. */
+    uint32_t abd[3] = {saa, sba, ada};
+    for (int k = 0; k < 3; k++) {
+      uint32_t sel = abd[k];
+      r->cc_alpha[cyc][k == 2 ? 3 : k] = sel < 6 ? lane((int)sel, 3) : sel == 6 ? lane(S_255, 0) : lane(S_ZERO, 0);
+    }
+    r->cc_alpha[cyc][2] = mua == 0 ? lane(S_LOD, 0) : mua < 6 ? lane((int)mua, 3) : mua == 6 ? lane(S_PLOD, 0) : lane(S_ZERO, 0);
   }
-}
-static int32_t cc_d(const CcIn *in, uint32_t sel, int ch) {
-  const int32_t *c[] = {&in->combined.r, &in->tex0.r, &in->tex1.r, &in->prim.r, &in->shade.r, &in->env.r};
-  if (sel < 6) return c[sel][ch];
-  if (sel == 6) return 255;
-  return 0;
-}
-static int32_t ca_abd(const CcIn *in, uint32_t sel) {
-  switch (sel) {
-    case 0: return in->combined.a;
-    case 1: return in->tex0.a;
-    case 2: return in->tex1.a;
-    case 3: return in->prim.a;
-    case 4: return in->shade.a;
-    case 5: return in->env.a;
-    case 6: return 255;
-    default: return 0;
-  }
-}
-static int32_t ca_c(const CcIn *in, uint32_t sel) {
-  switch (sel) {
-    case 0: return in->lod_frac;
-    case 1: return in->tex0.a;
-    case 2: return in->tex1.a;
-    case 3: return in->prim.a;
-    case 4: return in->shade.a;
-    case 5: return in->env.a;
-    case 6: return in->prim_lod_frac;
-    default: return 0;
-  }
+  int32_t *v = r->ccv;
+  Col p = unpack32(r->prim), e = unpack32(r->env);
+  set_slot(v, S_PRIM, p.r, p.g, p.b, p.a);
+  set_slot(v, S_ENV, e.r, e.g, e.b, e.a);
+  set_slot(v, S_256, 256, 256, 256, 256);
+  set_slot(v, S_255, 255, 255, 255, 255);
+  set_slot(v, S_128, 128, 128, 128, 128);   /* noise (constant mid value for now) */
+  set_slot(v, S_ZERO, 0, 0, 0, 0);
+  set_slot(v, S_KEYC, (int32_t)(r->key_r >> 16 & 0xFF), (int32_t)(r->key_g >> 16 & 0xFF), (int32_t)(r->key_b >> 16 & 0xFF), 0);
+  set_slot(v, S_KEYS, (int32_t)(r->key_r & 0xFF), (int32_t)(r->key_g & 0xFF), (int32_t)(r->key_b & 0xFF), 0);
+  int32_t k4 = (int32_t)r->convert[4], k5 = (int32_t)r->convert[5];
+  set_slot(v, S_K4, k4, k4, k4, k4);
+  set_slot(v, S_K5, k5, k5, k5, k5);
+  /* Without LOD calculation the LOD fraction reads as 1.0 (texrects in
+   * krom's tests multiply texture alpha by it and show the texture). */
+  int32_t lod = OM(r, 48) ? 0 : 255, plod = (int32_t)r->prim_lod_frac;
+  set_slot(v, S_LOD, lod, lod, lod, lod);
+  set_slot(v, S_PLOD, plod, plod, plod, plod);
+  r->cc_dirty = false;
 }
 
 static inline int32_t cc_mix(int32_t a, int32_t b, int32_t c, int32_t d) {
@@ -251,23 +245,16 @@ static inline int32_t cc_mix(int32_t a, int32_t b, int32_t c, int32_t d) {
   return v;
 }
 
-static Col combine_cycle(const Rdp *r, const CcIn *in, int cycle) {
-  uint64_t m = r->combine;
-  uint32_t sa, sb, mu, ad, saa, sba, mua, ada;
-  if (cycle == 0) {
-    sa = (uint32_t)(m >> 52) & 15; mu = (uint32_t)(m >> 47) & 31; saa = (uint32_t)(m >> 44) & 7; mua = (uint32_t)(m >> 41) & 7;
-    sb = (uint32_t)(m >> 28) & 15; ad = (uint32_t)(m >> 15) & 7; sba = (uint32_t)(m >> 12) & 7; ada = (uint32_t)(m >> 9) & 7;
-  } else {
-    sa = (uint32_t)(m >> 37) & 15; mu = (uint32_t)(m >> 32) & 31; saa = (uint32_t)(m >> 21) & 7; mua = (uint32_t)(m >> 18) & 7;
-    sb = (uint32_t)(m >> 24) & 15; ad = (uint32_t)(m >> 6) & 7; sba = (uint32_t)(m >> 3) & 7; ada = (uint32_t)m & 7;
-  }
+static inline Col combine_cycle(const Rdp *r, int cycle) {
+  const int32_t *v = r->ccv;
   Col o;
-  int32_t *out[] = {&o.r, &o.g, &o.b};
+  int32_t *out[3] = {&o.r, &o.g, &o.b};
   for (int ch = 0; ch < 3; ch++) {
-    int32_t a = cc_a(in, sa, ch);
-    *out[ch] = cc_mix(a == 256 ? 256 : a, cc_b(in, sb, ch, r), cc_c(in, mu, ch, r), cc_d(in, ad, ch));
+    const uint8_t *i = r->cc_rgb[cycle][0];
+    *out[ch] = cc_mix(v[i[ch]], v[r->cc_rgb[cycle][1][ch]], v[r->cc_rgb[cycle][2][ch]], v[r->cc_rgb[cycle][3][ch]]);
   }
-  o.a = cc_mix(ca_abd(in, saa), ca_abd(in, sba), ca_c(in, mua), ca_abd(in, ada));
+  const uint8_t *a = r->cc_alpha[cycle];
+  o.a = cc_mix(v[a[0]], v[a[1]], v[a[2]], v[a[3]]);
   return o;
 }
 
@@ -358,28 +345,29 @@ static void shade_pixel(N64 *n, const Prim *p, int x, int y, Col shade, int32_t 
     if (!pass) return;
   }
 
-  CcIn in;
-  memset(&in, 0, sizeof in);
-  in.shade = shade;
-  in.prim = unpack32(r->prim);
-  in.env = unpack32(r->env);
-  in.prim_lod_frac = (int32_t)r->prim_lod_frac;
-  /* Without LOD calculation the LOD fraction reads as 1.0 (texrects in
-   * krom's tests multiply texture alpha by it and show the texture). */
-  in.lod_frac = OM(r, 48) ? 0 : 255;
+  if (r->cc_dirty) cc_decode(r);
+  int32_t *v = r->ccv;
+  set_slot(v, S_SHADE, shade.r, shade.g, shade.b, shade.a);
   if (p->textured) {
     bool filter = BILERP(r);
-    in.tex0 = sample(r, p->tile, s, t, filter);
-    in.tex1 = CYCLE_TYPE(r) == CYC_2 ? sample(r, p->tile + 1, s, t, filter) : in.tex0;
+    Col t0 = sample(r, p->tile, s, t, filter);
+    Col t1 = CYCLE_TYPE(r) == CYC_2 ? sample(r, p->tile + 1, s, t, filter) : t0;
+    set_slot(v, S_T0, t0.r, t0.g, t0.b, t0.a);
+    set_slot(v, S_T1, t1.r, t1.g, t1.b, t1.a);
+  } else {
+    set_slot(v, S_T0, 0, 0, 0, 0);
+    set_slot(v, S_T1, 0, 0, 0, 0);
   }
   /* 1-cycle mode runs the combiner's second-cycle settings. */
   Col c;
   if (CYCLE_TYPE(r) == CYC_2) {
-    c = combine_cycle(r, &in, 0);
-    in.combined = c;
-    c = combine_cycle(r, &in, 1);
+    set_slot(v, S_COMB, 0, 0, 0, 0);
+    c = combine_cycle(r, 0);
+    set_slot(v, S_COMB, c.r, c.g, c.b, c.a);
+    c = combine_cycle(r, 1);
   } else {
-    c = combine_cycle(r, &in, 1);
+    set_slot(v, S_COMB, 0, 0, 0, 0);
+    c = combine_cycle(r, 1);
   }
 
   if (ALPHA_COMPARE(r) && c.a < (int32_t)(r->blend & 0xFF)) return;
@@ -683,6 +671,9 @@ static void execute(N64 *n, const uint64_t *c) {
   uint64_t w = c[0];
   uint32_t op = (uint32_t)(w >> 56) & 0x3F;
   uint32_t lo = (uint32_t)w;
+  /* Any state command may change combiner inputs (prim, env, key, convert,
+   * other modes, combine); drawing commands don't. */
+  if (!(op >= 0x08 && op <= 0x0F) && op != 0x24 && op != 0x25 && op != 0x36) r->cc_dirty = true;
   switch (op) {
     case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E: case 0x0F:
       triangle(n, c, (op & 4) != 0, (op & 2) != 0, (op & 1) != 0);
@@ -690,7 +681,7 @@ static void execute(N64 *n, const uint64_t *c) {
     case 0x24: tex_rect(n, c, false); break;
     case 0x25: tex_rect(n, c, true); break;
     case 0x26: case 0x27: case 0x28: break;                     /* sync load / pipe / tile */
-    case 0x29: n64_raise_mi(n, MI_INTR_DP); break;              /* sync full */
+    case 0x29: rdp_sync_full(n); break;                         /* sync full */
     case 0x2A: r->key_g = (uint32_t)(w >> 32) & 0xFFF; r->key_b = lo; break;
     case 0x2B: r->key_r = lo; break;
     case 0x2C:
@@ -740,20 +731,36 @@ static void execute(N64 *n, const uint64_t *c) {
   }
 }
 
-void rdp_run(N64 *n) {
+/* Feed one command word: commands are executed once all their words are in. */
+void rdp_word(N64 *n, uint64_t w) {
   Rdp *r = &n->rdp;
-  bool xbus = (n->dp.status & 1) != 0;  /* commands in DMEM */
+  if (r->cmd_len < sizeof r->cmd / sizeof r->cmd[0]) r->cmd[r->cmd_len++] = w;
+  uint32_t op = (uint32_t)(r->cmd[0] >> 56) & 0x3F;
+  if (r->cmd_len >= cmd_words(op)) {
+    execute(n, r->cmd);
+    r->cmd_len = 0;
+  }
+}
+
+/* DPC_END was written: take the words from current to end (RDRAM, or DMEM
+ * over the XBUS). With the worker thread they're queued, else drawn now. */
+void rdp_run(N64 *n) {
+  bool xbus = (n->dp.status & 1) != 0;
+  bool threaded = rdp_thread_active();
+  uint64_t buf[512];
+  uint32_t nbuf = 0;
   int guard = 1 << 20;
   while (n->dp.current < n->dp.end && guard--) {
     uint32_t a = n->dp.current;
     uint64_t w = xbus ? rd64be(n->dmem + (a & 0xFF8)) : rd64be(n->rdram + (a & (RDRAM_SIZE - 8)));
     n->dp.current += 8;
-    if (r->cmd_len < sizeof r->cmd / sizeof r->cmd[0]) r->cmd[r->cmd_len++] = w;
-    uint32_t op = (uint32_t)(r->cmd[0] >> 56) & 0x3F;
-    if (r->cmd_len >= cmd_words(op)) {
-      execute(n, r->cmd);
-      r->cmd_len = 0;
+    if (!threaded) {
+      rdp_word(n, w);
+      continue;
     }
+    buf[nbuf++] = w;
+    if (nbuf == sizeof buf / sizeof buf[0]) { rdp_thread_push(buf, nbuf); nbuf = 0; }
   }
+  if (nbuf) rdp_thread_push(buf, nbuf);
   n->dp.status |= 0x80; /* buffer ready */
 }

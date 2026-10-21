@@ -82,6 +82,11 @@ typedef struct {
   uint32_t fcr31;
 
   uint64_t cycles;    /* total CPU cycles executed */
+  /* cpu_run applies Count, Random and cycles in batches: instructions run
+   * since the last cpu_sync, and whether an interrupt may have become
+   * pending (set by COP0 writes and the MI line). */
+  uint32_t pending;
+  bool irq_check;
   /* Idle detection: the CPU re-reading the same RCP register at the same pc
    * with nothing changing is waiting; the rest of its time slice is skipped. */
   uint64_t poll_pc;
@@ -149,6 +154,12 @@ typedef struct {
   uint8_t tmem[4096];
   uint64_t cmd[44];          /* a command split across two DPC_END writes */
   uint32_t cmd_len;
+  /* Combiner decoded for speed (rebuilt when cc_dirty): per cycle, the
+   * offsets into ccv of each input (A, B, C, D) for R, G, B and alpha.
+   * ccv holds 16 four-lane slots: per-pixel colours and constants. */
+  int32_t ccv[16 * 4];
+  uint8_t cc_rgb[2][4][3], cc_alpha[2][4];
+  bool cc_dirty;
 } Rdp;
 
 /* RSP: a MIPS-like scalar unit plus the vector unit (COP2). */
@@ -166,6 +177,16 @@ typedef struct {
 
 /* Save memory kinds (stage 4 adds the controller pak). */
 typedef enum { SAVE_NONE, SAVE_EEPROM_4K, SAVE_EEPROM_16K, SAVE_SRAM, SAVE_FLASH } SaveType;
+
+typedef enum { FLASH_READ, FLASH_STATUS, FLASH_WRITE, FLASH_ERASE } FlashMode;
+
+typedef struct {
+  FlashMode mode;
+  uint64_t status;
+  uint32_t offset;     /* page to program / sector to erase, in bytes */
+  bool erase_all;
+  uint8_t page[128];   /* page buffer */
+} Flash;
 
 typedef struct {
   uint16_t buttons;  /* N64 controller bit layout, see pif.c */
@@ -193,6 +214,7 @@ typedef struct N64 {
   SaveType save_type;
   uint8_t eeprom[2048];
   uint8_t sram[0x20000];       /* SRAM (32 KB) or FlashRAM (128 KB) */
+  Flash flash;
   bool save_dirty;
 
   /* Audio resampled to 44.1 kHz stereo, drained by the frontend each frame. */
@@ -256,6 +278,24 @@ void pif_hle_boot(N64 *n);
 void pif_process(N64 *n);
 uint32_t cic_detect(const uint8_t *rom, uint32_t size);
 SaveType save_guess(const uint8_t *rom, uint32_t size);
+
+/* rdp.c / rdp_thread.c */
+void rdp_word(N64 *n, uint64_t w);
+void rdp_sync_full(N64 *n);
+bool rdp_thread_active(void);
+bool rdp_thread_start(N64 *n);
+void rdp_thread_push(const uint64_t *words, uint32_t count);
+void rdp_thread_wait(N64 *n);
+void rdp_thread_poll(N64 *n);
+void rdp_thread_stop(N64 *n);
+
+/* flash.c */
+void flash_reset(N64 *n);
+void flash_erase_all(N64 *n);
+void flash_command(N64 *n, uint32_t v);
+uint32_t flash_read32(N64 *n);
+uint8_t flash_dma_byte(N64 *n, uint32_t cart_addr, uint32_t i);
+void flash_dma_store(N64 *n, uint32_t i, uint8_t v);
 
 /* ---- video out (vi.c) ---- */
 /* Converts the current VI framebuffer to XRGB8888. Returns false when blank. */

@@ -8,6 +8,7 @@
 void n64_update_interrupts(N64 *n) {
   if (n->mi.intr & n->mi.mask) n->cpu.cp0[CP0_CAUSE] |= 1ull << 10;   /* IP2 */
   else n->cpu.cp0[CP0_CAUSE] &= ~(1ull << 10);
+  n->cpu.irq_check = true;
 }
 
 void n64_raise_mi(N64 *n, uint32_t bit) {
@@ -48,10 +49,13 @@ bool n64_load_rom(N64 *n, const uint8_t *data, size_t size, uint8_t **owned_rom)
            region == 'U' || region == 'X' || region == 'Y';
   n->cic = cic_detect(rom, n->rom_size);
   n->save_type = save_guess(rom, n->rom_size);
+  /* Blank FlashRAM reads as erased; the frontend loads a save over this. */
+  if (n->save_type == SAVE_FLASH) flash_erase_all(n);
   return true;
 }
 
 void n64_reset(N64 *n) {
+  rdp_thread_wait(n);   /* nothing may be drawing while the machine is cleared */
   /* Keep the cartridge, saves, controllers; clear the machine. */
   const uint8_t *rom = n->rom;
   uint32_t rom_size = n->rom_size;
@@ -74,6 +78,7 @@ void n64_reset(N64 *n) {
   n->cic = cic;
   memcpy(n->pad_connected, conn, sizeof conn);
 
+  flash_reset(n);
   cpu_reset(n);
   pif_hle_boot(n);
 }
@@ -91,6 +96,7 @@ void n64_run_frame(N64 *n) {
       uint32_t slice = per_line - done < 120 ? per_line - done : 120;
       cpu_run(n, slice);
       rsp_run(n, slice * 2 / 3);
+      rdp_thread_poll(n);
     }
     ai_tick(n, per_line);
     vi_tick(n, per_line);

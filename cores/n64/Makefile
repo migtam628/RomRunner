@@ -4,9 +4,9 @@
 CC ?= cc
 CFLAGS ?= -O2
 CFLAGS += -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -fPIC -Isrc -I../../packages/romrunner_core/src/third_party
-LDLIBS = -lm
+LDLIBS = -lm -lpthread
 
-SRC = src/cpu.c src/fpu.c src/rsp.c src/rdp.c src/bus.c src/pif.c src/vi.c src/n64.c src/libretro.c
+SRC = src/cpu.c src/fpu.c src/rsp.c src/rdp.c src/rdp_thread.c src/bus.c src/pif.c src/flash.c src/vi.c src/n64.c src/libretro.c
 OBJ = $(SRC:src/%.c=build/%.o)
 
 UNAME := $(shell uname -s)
@@ -48,7 +48,10 @@ build/romtest: test/romtest.c $(OBJ)
 build/chksum64: test/chksum64.c $(OBJ)
 	$(CC) $(CFLAGS) -o $@ test/chksum64.c $(OBJ) $(LDLIBS)
 
-tools: build/romtest build/chksum64
+build/play: test/play.c $(OBJ)
+	$(CC) $(CFLAGS) -o $@ test/play.c $(OBJ) $(LDLIBS)
+
+tools: build/romtest build/chksum64 build/play
 
 test: build/cpu_test build/rsp_test build/rdp_test build/system_test build/romtest
 	./build/cpu_test

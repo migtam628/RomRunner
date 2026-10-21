@@ -200,6 +200,40 @@ int main(int argc, char **argv) {
   CHECK("v64 runs", last_pixel, 0x00FF0000u);
   retro_unload_game();
 
+  {
+    /* FlashRAM protocol, driven through the PI like a game would. */
+    N64 *f = (N64 *)calloc(1, sizeof(N64));
+    f->save_type = SAVE_FLASH;
+    flash_erase_all(f);
+    flash_reset(f);
+    uint32_t v = 0;
+    bus_write32(f, 0x08010000u, 0xE1000000u);
+    bus_read32(f, 0x08000000u, &v);
+    CHECK("flash status word", v, 0x11118001u);
+    rcp_reg_write(f, 0x04600000u, 0x1000);            /* PI DRAM address */
+    rcp_reg_write(f, 0x04600004u, 0x08000000u);       /* PI cart address */
+    rcp_reg_write(f, 0x0460000Cu, 7);                 /* 8 bytes cart -> RDRAM */
+    CHECK("flash ID by DMA", rd32be(f->rdram + 0x1004), 0x00C2001Eu);
+    for (int i = 0; i < 128; i++) f->rdram[0x2000 + i] = (uint8_t)(i ^ 0x5A);
+    bus_write32(f, 0x08010000u, 0xB4000000u);         /* write mode */
+    rcp_reg_write(f, 0x04600000u, 0x2000);
+    rcp_reg_write(f, 0x04600004u, 0x08000000u);
+    rcp_reg_write(f, 0x04600008u, 127);               /* 128 bytes RDRAM -> page buffer */
+    bus_write32(f, 0x08010000u, 0xA5000000u | 3);     /* program page 3 */
+    CHECK("flash page programmed", f->sram[3 * 128 + 1], 1 ^ 0x5A);
+    CHECK("flash next page untouched", f->sram[4 * 128], 0xFF);
+    bus_write32(f, 0x08010000u, 0xF0000000u);         /* read mode */
+    rcp_reg_write(f, 0x04600000u, 0x3000);
+    rcp_reg_write(f, 0x04600004u, 0x08000000u + 3 * 128 / 2);  /* PI address counts 16-bit words */
+    rcp_reg_write(f, 0x0460000Cu, 127);
+    CHECK("flash read back", f->rdram[0x3000 + 5], 5 ^ 0x5A);
+    bus_write32(f, 0x08010000u, 0x4B000000u | 3);     /* sector holding page 3 */
+    bus_write32(f, 0x08010000u, 0x78000000u);
+    bus_write32(f, 0x08010000u, 0xD2000000u);
+    CHECK("flash sector erased", f->sram[3 * 128 + 1], 0xFF);
+    CHECK("flash save marked dirty", f->save_dirty, 1);
+    free(f);
+  }
   printf("system: %d/%d checks passed\n", checks - failures, checks);
   return failures ? 1 : 0;
 }

@@ -289,11 +289,17 @@ Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge
 - **Dolphin:** has to be installed by hand (see above).
 - **macOS:** the app isn't notarized, and it ships without the App Sandbox so it can load downloaded cores.
 
+### In-house emulators
+
+RomRunner is getting its own emulators, written in C from public hardware documentation with no code from other emulators. Each one plugs into the same bridge as the libretro cores, and each is tested on every push. The libretro core for a system stays as the fallback until the in-house one is ready.
+
+- **N64** (`cores/n64/`): stage 1 of 5 is done: the main processor, memory, boot without a BIOS, video output, controllers, EEPROM and save states. Next come the RSP, then the graphics chip. See [cores/n64/README.md](cores/n64/README.md).
+
 ### Roadmap
 
 1. Gamepads on iOS, macOS, Windows and Linux.
 2. Core options UI (region, palette, renderer); the bridge already supports `rr_set_option`.
-3. Box art from the libretro thumbnails repo, plus recent and favorite rows.
+3. Recent and favorite rows in the library.
 4. Return to RomRunner automatically when an external emulator exits (desktop).
 5. GPU rendering in the engine, to run N64, PSP and Dreamcast cores built in.
 6. Rewind, and CRT/LCD shaders.

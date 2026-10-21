@@ -54,6 +54,30 @@ jobs:
             /tmp/gbroms/cpu_instrs/cpu_instrs.gb 3600 | tee out.txt
           grep -q "frames produced" out.txt
 
+  n64:
+    name: N64 core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build (warnings as errors)
+        working-directory: cores/n64
+        run: make -j4
+      - name: CPU and system tests
+        working-directory: cores/n64
+        run: make test
+      - name: Through the app's bridge
+        if: runner.os == 'Linux'
+        working-directory: cores/n64/build
+        run: |
+          ./system_test --write-rom test.z64
+          "$GITHUB_WORKSPACE/tool/test_bridge.sh" "$PWD/romrunner_n64_libretro.so" "$PWD/test.z64" 120 | tee out.txt
+          grep -q "last 320x237" out.txt
+          grep -q "non-black pixels: 75840 of 75840" out.txt
+
   downloads:
     name: Download ${{ matrix.emulator }}
     # Checks that every emulator's official download still resolves, so the

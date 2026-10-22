@@ -16,3 +16,4 @@ app/ios/cores/*.dylib
 *.srm
 *.ppm
 build-n64/
+cores/ps1/build/

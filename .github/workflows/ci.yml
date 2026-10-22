@@ -154,6 +154,8 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q gcc-mipsel-linux-gnu g++-mipsel-linux-gnu
           git clone -q --depth 1 --recurse-submodules --shallow-submodules https://github.com/pcsx-redux/nugget nugget
+          # Debian/Ubuntu binutils call the format elf32-tradlittlemips.
+          grep -rl 'elf32-littlemips' nugget --include='*.mk' --include=Makefile | xargs sed -i 's/elf32-littlemips/elf32-tradlittlemips/g'
           make -C nugget/openbios -j4 PREFIX=mipsel-linux-gnu
           ls -la nugget/openbios/openbios.bin
           cp nugget/openbios/openbios.bin openbios.bin

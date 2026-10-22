@@ -94,6 +94,11 @@ typedef struct {
   uint32_t hres, vres_bit, pal, color24, interlace, hres2;
   bool field;                       /* odd/even field (interlace) */
   bool irq;                         /* GP0 1F requested */
+  /* CLUT cache: the palette is read from VRAM once and reused until a
+   * primitive needs a different one (position or 4-bit/8-bit). */
+  uint16_t clut_cache[256];
+  uint32_t clut_tag_x, clut_tag_y, clut_tag_depth;   /* depth: entries loaded */
+  bool clut_valid;
 } Gpu;
 
 /* Controller port (SIO0). */

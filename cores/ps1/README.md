@@ -13,7 +13,7 @@ make tools    # build/exerun: run a PS-EXE and print what it outputs
 | Stage | Scope | State |
 |---|---|---|
 | 1 | R3000A CPU (load and branch delay slots, COP0 exceptions and interrupts, multiply/divide timing), memory map, DMA (all sync modes, linked lists, OTC), timers, controller port, GPU command framework, VRAM transfers, display output, PS-EXE loading | **in progress** |
-| 2 | GPU rasteriser: polygons (flat, Gouraud, textured, semi-transparent), lines, rectangles, texture pages/CLUTs/windows, dithering, mask bit | |
+| 2 | GPU rasteriser: polygons (flat, Gouraud, textured 4/8/15-bit, raw or modulated), the four semi-transparency modes, dithering, mask bit, texture window, CLUT cache, lines and poly-lines, rectangles with texture flip, 16-pixel VRAM copy buffer | **done**: all 11 drawing tests match the console's VRAM pixel for pixel |
 | 3 | GTE (the geometry coprocessor: RTPS/RTPT, NCLIP, lighting, the rest) | |
 | 4 | CD-ROM (disc images, commands, XA audio), SPU (ADPCM voices, reverb), memory cards, MDEC video | |
 | 5 | Speed: a recompiler for ARM64 and x86-64 | |
@@ -30,11 +30,11 @@ CI runs JaCzekanski's [ps1-tests](https://github.com/JaCzekanski/ps1-tests) (MIT
 
 | | Checks passing |
 |---|---|
-| No BIOS | 26 of 34 |
-| OpenBIOS | 41 of 49 |
+| No BIOS | 38 of 47 |
+| OpenBIOS | 53 of 62 |
 
-Most programs report nothing yet: the GPU tests are judged by their reference VRAM images once the rasteriser exists (stage 2), and the CD-ROM, SPU and MDEC tests wait for stage 4.
+Drawing tests are judged by their reference VRAM picture (from the test sources, `--refs`): the displayed area must match exactly. Rules worked out against those references are noted in `src/raster.c` (fill rule, interpolation rounding, line stepping, the X-flip offset, CLUT cache reloads). One test has a known unmatched area: `gpu/lines` never sets one vertex colour, so that segment shows the console's stack contents (skipped, see `IGNORE` in `test/suites.py`). The CD-ROM, SPU and MDEC tests wait for stage 4.
 
 ```
-python3 test/suites.py --exerun build/exerun --tests <unzipped tests.zip> [--bios openbios.bin] --baseline test/suite_baseline.txt
+python3 test/suites.py --exerun build/exerun --tests <unzipped tests.zip> --refs <ps1-tests checkout> [--bios openbios.bin] --baseline test/suite_baseline.txt
 ```

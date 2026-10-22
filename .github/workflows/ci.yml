@@ -145,6 +145,10 @@ jobs:
           curl -fsSL --retry 5 --retry-all-errors -o tests.zip \
             https://github.com/JaCzekanski/ps1-tests/releases/download/build-158/tests.zip
           unzip -q tests.zip -d ps1-tests
+          # Reference VRAM pictures for the drawing tests live in the sources.
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/JaCzekanski/ps1-tests ps1-tests-src
+          git -C ps1-tests-src sparse-checkout set gpu mdec
+          pip install --quiet pillow
       - name: Build OpenBIOS (pcsx-redux, MIT)
         # A free PS1 BIOS written from scratch. If it doesn't build, the
         # tests still run with the core's minimal built-in BIOS calls.
@@ -161,12 +165,12 @@ jobs:
           cp nugget/openbios/openbios.bin openbios.bin
       - name: Run without a BIOS (baseline)
         run: |
-          python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests \
+          python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests --refs ps1-tests-src \
             --baseline cores/ps1/test/suite_baseline.txt --summary "$GITHUB_STEP_SUMMARY"
       - name: Run with OpenBIOS
         if: steps.openbios.outcome == 'success'
         run: |
-          python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests \
+          python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests --refs ps1-tests-src \
             --bios openbios.bin --baseline cores/ps1/test/suite_baseline_openbios.txt \
             --summary "$GITHUB_STEP_SUMMARY" --update-baseline-to openbios_baseline.txt
       - uses: actions/upload-artifact@v6

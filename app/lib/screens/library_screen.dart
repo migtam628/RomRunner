@@ -8,6 +8,8 @@ import '../services/library.dart';
 import '../services/cover_art.dart';
 import '../widgets/cover_image.dart';
 import '../services/external_support.dart';
+import '../services/updater.dart';
+import '../widgets/update_dialog.dart';
 import '../widgets/install_dialog.dart';
 import 'game_screen.dart';
 import 'settings_screen.dart';
@@ -34,6 +36,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _reload();
+    // A few seconds in, so starting up stays quick.
+    Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+  }
+
+  Future<void> _checkForUpdate() async {
+    final r = await Updater.instance.checkIfDue();
+    if (r == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('RomRunner ${r.version} is available'),
+      duration: const Duration(seconds: 12),
+      action: SnackBarAction(label: 'Update', onPressed: () => UpdateDialog.show(context, r)),
+    ));
   }
 
   Future<void> _reload() async {

@@ -9,6 +9,7 @@ import '../services/library.dart';
 import '../services/external_support.dart';
 import '../widgets/ai_settings_card.dart';
 import '../widgets/install_dialog.dart';
+import '../widgets/updates_section.dart';
 import 'library_screen.dart' show askFolderPath;
 
 /// Settings: game folders, and which emulator app opens each system
@@ -143,6 +144,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
+            if (!kIsWeb) ...[
+              const SizedBox(height: 28),
+              const UpdatesSection(),
+            ],
             // In-game help needs the game picture, which the browser player doesn't expose.
             if (!kIsWeb) ...[
               const SizedBox(height: 28),

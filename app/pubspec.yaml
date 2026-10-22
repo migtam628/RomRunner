@@ -42,6 +42,7 @@ dependencies:
   romrunner_core:
     path: ../packages/romrunner_core
   url_launcher: ^6.3.3
+  package_info_plus: ^10.2.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -89,7 +89,7 @@ jobs:
       - name: Fetch krom's test ROMs (public domain)
         run: |
           git clone -q --depth 1 --filter=blob:none --sparse https://github.com/PeterLemon/N64 /tmp/krom
-          git -C /tmp/krom sparse-checkout set CPUTest RSPTest RDP
+          git -C /tmp/krom sparse-checkout set CPUTest RSPTest RDP Input
       - name: Build Dillon's n64-tests
         continue-on-error: true
         run: |
@@ -115,6 +115,16 @@ jobs:
             --baseline cores/n64/test/suite_baseline.txt --summary "$GITHUB_STEP_SUMMARY" | tee /tmp/suite.md
           echo "::notice title=N64 suites::$(head -1 /tmp/suite.md | sed 's/## //')"
           grep -o "dillon/[^ |]* | [A-Z]*" /tmp/suite.md | sed 's/^/::notice title=dillon::/' | head -40 || true
+
+      - name: Controller input reaches games (through the app's bridge)
+        # krom's InputCPU moves a dot with the D-pad, reading the controller
+        # the way libultra games do (command list written once, then only
+        # read back), through the same bridge calls the app uses.
+        run: |
+          make -C cores/n64 -j4
+          cc -O2 -DRR_NO_AUDIO packages/romrunner_core/src/romrunner_core.c packages/romrunner_core/test/input_check.c \
+            -o input_check -ldl -lpthread
+          ./input_check cores/n64/build/romrunner_n64_libretro.so /tmp/krom/Input/CPU/InputCPU.N64 80 240 rrn64_dpad_stick=off
 
   ps1:
     name: PS1 core (${{ matrix.os }})

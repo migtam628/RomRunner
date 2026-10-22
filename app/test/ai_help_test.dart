@@ -99,6 +99,28 @@ void main() {
     expect(session.turns, isEmpty);
   });
 
+  test('a DNS failure explains how to reconnect and keeps the conversation unchanged', () async {
+    final client = MockClient((_) async => throw http.ClientException(
+          'SocketException: Failed host lookup: api.anthropic.com (No address associated with hostname)',
+        ));
+    final session = AiHelpSession(title: 'Game', console: Console.nds, client: client);
+    await expectLater(
+      session.ask('Where do I go next?'),
+      throwsA(isA<AiHelpException>().having((e) => e.message, 'message', allOf(contains('DNS'), contains('api.anthropic.com')))),
+    );
+    expect(session.turns, isEmpty);
+  });
+
+  test('a generic connection failure has a readable message', () async {
+    final client = MockClient((_) async => throw http.ClientException('connection refused'));
+    final session = AiHelpSession(title: 'Game', console: Console.nds, client: client);
+    await expectLater(
+      session.ask('Where do I go next?'),
+      throwsA(isA<AiHelpException>().having((e) => e.message, 'message', contains('Check your connection'))),
+    );
+    expect(session.turns, isEmpty);
+  });
+
   test('without a key or endpoint it asks for setup instead of calling out', () async {
     AiSettings.useForTesting(AiSettings());
     var called = false;

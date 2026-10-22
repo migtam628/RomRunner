@@ -10,9 +10,11 @@ import '../input/key_mapping.dart';
 import '../models/console.dart';
 import '../models/control_layout.dart';
 import '../models/game.dart';
+import '../services/ai_help.dart';
 import '../services/control_store.dart';
 import '../services/core_manager.dart';
 import '../services/paths.dart';
+import '../widgets/help_sheet.dart';
 import '../widgets/layout_editor.dart';
 import '../widgets/pause_menu.dart';
 import '../widgets/touch_controller.dart';
@@ -60,6 +62,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   Console get _console => widget.game.console;
 
+  /// The AI help conversation for this play session (kept between opens).
+  late final AiHelpSession _help = AiHelpSession(title: widget.game.title, console: _console);
+  bool _helpOpen = false;
+  bool _showHelpButton = true;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +75,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     // with a swipe from the edge.
     if (Platform.isAndroid || Platform.isIOS) SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _loadLayouts();
+    AiSettings.load().then((s) {
+      if (mounted) setState(() => _showHelpButton = s.showButton);
+    });
     _boot();
   }
 
@@ -175,6 +185,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             _openMenu();
           case KeyAction.toggleFastForward:
             _setFastForward(!_fastForward);
+          case KeyAction.help:
+            _openHelp();
         }
       }
       return KeyEventResult.handled;
@@ -231,6 +243,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           _toast('Loaded slot $_slot');
         case PauseAction.reset:
           _core.reset();
+        case PauseAction.help:
+          await _openHelp(fromMenu: true);
+          return; // _openHelp resumes
         case PauseAction.toggleFastForward:
           _setFastForward(!_fastForward);
         case PauseAction.toggleTouch:
@@ -248,6 +263,27 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       _toast(e.message);
     }
     _core.paused = false;
+    _focus.requestFocus();
+  }
+
+  /// Pauses, grabs the game picture and opens the help panel; resumes after.
+  Future<void> _openHelp({bool fromMenu = false}) async {
+    if (_helpOpen || !_running || (_menuOpen && !fromMenu)) return;
+    _helpOpen = true;
+    _keyMask = 0;
+    _touchMask = 0;
+    _pushInput();
+    _core.paused = true;
+    Uint8List? shot;
+    try {
+      final data = await _image?.toByteData(format: ui.ImageByteFormat.png);
+      shot = data?.buffer.asUint8List();
+    } catch (_) {}
+    if (!mounted) return;
+    await HelpSheet.show(context, session: _help, screenshot: shot);
+    _helpOpen = false;
+    if (!mounted) return;
+    if (!_menuOpen) _core.paused = false;
     _focus.requestFocus();
   }
 
@@ -288,6 +324,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     _shutdown();
     if (Platform.isAndroid || Platform.isIOS) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _image?.dispose();
+    _help.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -315,16 +352,34 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           child: Stack(
             children: [
               Positioned.fill(child: SafeArea(child: LayoutBuilder(builder: (context, box) => _play(box.biggest)))),
-              if (_running && (!_touchVisible || _layout(MediaQuery.sizeOf(context)).hiddenOf(menuId)) && !_editing)
+              if (_running && !_editing)
                 SafeArea(
                   child: Align(
                     alignment: Alignment.topRight,
                     child: Padding(
                       padding: const EdgeInsets.all(8),
-                      child: IconButton.filledTonal(
-                        tooltip: 'Menu',
-                        icon: const Icon(Icons.pause_rounded),
-                        onPressed: _openMenu,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_showHelpButton)
+                            Opacity(
+                              opacity: 0.8,
+                              child: IconButton.filledTonal(
+                                tooltip: 'Ask for help (F2)',
+                                icon: const Icon(Icons.auto_awesome),
+                                onPressed: _openHelp,
+                              ),
+                            ),
+                          if (!_touchVisible || _layout(MediaQuery.sizeOf(context)).hiddenOf(menuId))
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: IconButton.filledTonal(
+                                tooltip: 'Menu',
+                                icon: const Icon(Icons.pause_rounded),
+                                onPressed: _openMenu,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),

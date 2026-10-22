@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/console.dart';
 
 /// What a key does in-game besides pressing a RetroPad button.
-enum KeyAction { openMenu, toggleFastForward }
+enum KeyAction { openMenu, toggleFastForward, help }
 
 /// Keyboard, Android/Fire TV gamepad and TV remote bindings.
 ///
@@ -51,6 +51,7 @@ final Map<LogicalKeyboardKey, KeyAction> actionKeys = {
   LogicalKeyboardKey.goBack: KeyAction.openMenu,
   LogicalKeyboardKey.gameButtonMode: KeyAction.openMenu,
   LogicalKeyboardKey.f1: KeyAction.openMenu,
+  LogicalKeyboardKey.f2: KeyAction.help,
   LogicalKeyboardKey.tab: KeyAction.toggleFastForward,
   LogicalKeyboardKey.mediaFastForward: KeyAction.toggleFastForward,
 };

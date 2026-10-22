@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/console.dart';
 
-enum PauseAction { resume, saveState, loadState, reset, toggleFastForward, toggleTouch, editControls, quit }
+enum PauseAction { resume, help, saveState, loadState, reset, toggleFastForward, toggleTouch, editControls, quit }
 
 class PauseResult {
   const PauseResult(this.action, this.slot);
@@ -71,6 +71,7 @@ class _PauseMenuState extends State<PauseMenu> {
                 ),
               ),
               item(Icons.play_arrow_rounded, 'Resume', PauseAction.resume, autofocus: true),
+              item(Icons.auto_awesome, 'Ask for help (AI)', PauseAction.help),
               const Divider(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),

@@ -245,6 +245,11 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="content" android:mimeType="application/octet-stream"/>
         </intent>
+        <!-- AI help: open the sources an answer cites in the browser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

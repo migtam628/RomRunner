@@ -102,6 +102,7 @@ Shared extensions like `.iso` and `.bin` are recognised by looking inside the di
 ## Playing
 
 - **Pause menu:** Esc, the gamepad Guide button, the TV Back button, or the ⏸ button. It has 4 save-state slots, fast-forward (4×), reset and quit. On web, EmulatorJS has its own menu and save states, and in-game saves stay in the browser.
+- **AI help when you're stuck:** tap ✨ (top right), press F2, or pick **Ask for help (AI)** in the pause menu. The game pauses, and Claude sees the screen, the game's title and system, and your question ("Where do I go next?", "How do I beat this boss?"). It checks walkthroughs on the web and answers in short steps with links to its sources. Follow-up questions keep the conversation for that play session. It needs your own Anthropic API key (**Settings → AI help**, or paste it the first time you open help; create one at [console.anthropic.com](https://console.anthropic.com/settings/keys)). The key stays on the device; each question costs a fraction of a cent to a few cents depending on the model. **Custom endpoint** points it at your own proxy instead, so no key has to be on the device. Native apps only (the browser player doesn't expose its screen).
 - **Battery saves** (`.srm`) are written about every 10 seconds and when you quit.
 - **Touch controls** appear on phones and tablets, with a layout per system. They hide once a controller or keyboard is used; the pause menu brings them back. The game runs full screen; swipe from the edge for the system bars.
 - **Edit controls & screen** (pause menu) lets you lay things out your way. RomRunner saves the layout per system, with separate layouts for portrait and landscape:
@@ -122,6 +123,7 @@ Shared extensions like `.iso` and `.bin` are recognised by looking inside the di
 | Start / Select | Enter / Backspace | Start / Select | Play-Pause / Menu |
 | Pause menu | Esc | Guide | Back |
 | Fast-forward | Tab | – | Fast-forward |
+| AI help | F2 | – | pause menu |
 
 ---
 

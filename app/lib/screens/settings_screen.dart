@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../models/console.dart';
@@ -6,6 +7,7 @@ import '../services/cover_art.dart';
 import '../services/external_catalog.dart';
 import '../services/library.dart';
 import '../services/external_support.dart';
+import '../widgets/ai_settings_card.dart';
 import '../widgets/install_dialog.dart';
 import 'library_screen.dart' show askFolderPath;
 
@@ -141,6 +143,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
+            // In-game help needs the game picture, which the browser player doesn't expose.
+            if (!kIsWeb) ...[
+              const SizedBox(height: 28),
+              const AiSettingsSection(),
+            ],
             const SizedBox(height: 28),
             Text('App icon', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),

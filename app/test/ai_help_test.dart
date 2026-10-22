@@ -142,4 +142,19 @@ void main() {
     expect(seen.headers.containsKey('x-api-key'), isFalse);
     expect((jsonDecode(seen.body) as Map).containsKey('tools'), isFalse);
   });
+
+  test('a bare host in Custom endpoint gets the Messages API path', () {
+    expect(AiSettings.normalizeEndpoint(''), AiSettings.anthropicUrl);
+    expect(AiSettings.normalizeEndpoint('https://api.anthropic.com'), 'https://api.anthropic.com/v1/messages');
+    expect(AiSettings.normalizeEndpoint('https://api.anthropic.com/'), 'https://api.anthropic.com/v1/messages');
+    expect(AiSettings.normalizeEndpoint('api.anthropic.com/v1'), 'https://api.anthropic.com/v1/messages');
+    expect(AiSettings.normalizeEndpoint('https://proxy.example/claude/v1/messages'), 'https://proxy.example/claude/v1/messages');
+    expect(AiSettings.normalizeEndpoint('https://proxy.example/ask'), 'https://proxy.example/ask');
+  });
+
+  test('a 404 with no body points at the endpoint setting', () async {
+    AiSettings.useForTesting(AiSettings(apiKey: 'k', endpoint: 'https://wrong.example/x'));
+    final session = AiHelpSession(title: 'G', console: Console.nds, client: MockClient((_) async => http.Response('', 404)));
+    await expectLater(session.ask('help'), throwsA(isA<AiHelpException>().having((e) => e.message, 'message', contains('Custom endpoint'))));
+  });
 }

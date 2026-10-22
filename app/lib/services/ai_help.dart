@@ -45,7 +45,26 @@ class AiSettings {
   /// Ready to ask: a key, or a custom endpoint that supplies one.
   bool get configured => apiKey.trim().isNotEmpty || endpoint.trim().isNotEmpty;
 
-  String get url => endpoint.trim().isEmpty ? anthropicUrl : endpoint.trim();
+  String get url => normalizeEndpoint(endpoint);
+
+  /// The Messages API address for what was typed in Custom endpoint:
+  /// empty means Anthropic; a bare host ("https://api.anthropic.com") or a
+  /// path ending in /v1 gets /v1/messages added, since the bare host answers
+  /// 404 with an empty body.
+  static String normalizeEndpoint(String typed) {
+    var e = typed.trim();
+    if (e.isEmpty) return anthropicUrl;
+    if (!e.contains('://')) e = 'https://$e';
+    final u = Uri.tryParse(e);
+    if (u == null || u.host.isEmpty) return e;
+    var path = u.path.replaceAll(RegExp(r'/+$'), '');
+    if (path.isEmpty) {
+      path = '/v1/messages';
+    } else if (path.endsWith('/v1')) {
+      path = '$path/messages';
+    }
+    return u.replace(path: path).toString();
+  }
 
   Map<String, dynamic> toJson() => {
         'apiKey': apiKey,
@@ -212,6 +231,10 @@ You are the game guide built into RomRunner, a retro game emulator. The player i
       try {
         json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
       } catch (_) {
+        if (res.statusCode == 404) {
+          throw AiHelpException('Nothing answers at ${s.url}. In Settings → AI help, clear Custom endpoint '
+              '(empty uses Anthropic), or enter the full address of your proxy.');
+        }
         throw AiHelpException('Unexpected reply from ${Uri.parse(s.url).host} (HTTP ${res.statusCode}).');
       }
       if (res.statusCode != 200) throw AiHelpException(_errorText(res.statusCode, json));
@@ -243,6 +266,7 @@ You are the game guide built into RomRunner, a retro game emulator. The player i
     final msg = (json['error'] is Map ? json['error']['message'] : null) as String?;
     return switch (status) {
       401 => 'The API key was rejected. Check it in Settings → AI help.',
+      404 => 'The API doesn\'t know that model${msg != null ? ' ($msg)' : ''}. Pick another model in Settings → AI help.',
       403 => 'This API key isn\'t allowed to use that model or feature${msg != null ? ': $msg' : '.'}',
       429 => 'Rate limit or credit limit reached. Wait a moment, or check your Anthropic account.',
       529 || 503 => 'Claude is busy right now. Try again in a moment.',

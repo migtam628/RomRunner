@@ -298,6 +298,7 @@ Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev`. Test the C bridge
 RomRunner is getting its own emulators, written in C from public hardware documentation with no code from other emulators. Each one plugs into the same bridge as the libretro cores, and each is tested on every push. The libretro core for a system stays as the fallback until the in-house one is ready.
 
 - **N64** (`cores/n64/`): stages 1 and 2 of 5 are done (main processor, memory, boot without a BIOS, video, controllers, EEPROM, save states, the RSP), and stage 3, the RDP graphics chip in software, has its first pass. 238 of 323 community hardware test cartridges pass, and krom's N64NICCC 3D demo renders correctly. Releases ship it on Android, iOS, macOS, Windows and Linux as an experimental choice for N64 (`tool/build_n64.sh <platform>` builds it locally). See [cores/n64/README.md](cores/n64/README.md).
+- **PS1** (`cores/ps1/`): stages 1 and 2 of 5 (CPU, memory, DMA, timers, controller, and the GPU rasteriser). All 11 drawing tests in JaCzekanski's ps1-tests match the console's VRAM pixel for pixel; 53 checks pass when booted through OpenBIOS, the free BIOS CI builds from pcsx-redux. See [cores/ps1/README.md](cores/ps1/README.md).
 
 ### Roadmap
 

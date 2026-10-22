@@ -40,8 +40,29 @@ int main(int argc, char **argv) {
   int frames = atoi(argv[2]);
   for (int f = 0; f < frames; f++) ps1_run_frame(p);
   fwrite(p->tty, 1, p->tty_len, stdout);
-  printf("\nframes %d, pc %08x\n", frames, p->cpu.pc);
+  {
+    static uint32_t tmp[640 * 576];
+    uint32_t w = 0, h = 0;
+    gpu_render(p, tmp, 640, 576, &w, &h);
+    printf("\ndisplay %u %u %u %u\n", p->gpu.disp_x, p->gpu.disp_y, w, h);
+  }
+  printf("frames %d, pc %08x\n", frames, p->cpu.pc);
 
+  /* RRPS1_VRAM=<file.ppm>: the whole 1024x512 VRAM (for the GPU tests'
+   * reference images). */
+  const char *vpath = getenv("RRPS1_VRAM");
+  if (vpath) {
+    FILE *f = fopen(vpath, "wb");
+    if (f) {
+      fprintf(f, "P6\n%d %d\n255\n", VRAM_W, VRAM_H);
+      for (int i = 0; i < VRAM_W * VRAM_H; i++) {
+        uint16_t v = p->gpu.vram[i];
+        uint8_t rgb[3] = {(uint8_t)((v & 31) << 3), (uint8_t)(((v >> 5) & 31) << 3), (uint8_t)(((v >> 10) & 31) << 3)};
+        fwrite(rgb, 1, 3, f);
+      }
+      fclose(f);
+    }
+  }
   if (argc > 4) {
     static uint32_t px[640 * 576];
     uint32_t w, h;

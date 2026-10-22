@@ -90,6 +90,9 @@ void ps1_tty_putc(PS1 *p, char ch) {
   if (getenv("RRPS1_TTY")) fputc(ch, stderr);
 }
 
+/* One frame, ending just before vblank starts: by then the game has
+ * finished drawing the picture it wants shown, and the next call raises
+ * the vblank interrupt on its first line. */
 void ps1_run_frame(PS1 *p) {
   uint32_t lines = p->pal ? PAL_LINES : NTSC_LINES;
   uint32_t per_line = p->pal ? PAL_LINE : NTSC_LINE;
@@ -101,12 +104,14 @@ void ps1_run_frame(PS1 *p) {
     vis_end = p->pal ? 16 + 288 : 16 + 240;
   }
   p->frame_done = false;
-  for (uint32_t l = 0; l < lines; l++) {
-    p->line = l;
+  uint32_t guard = 0;
+  do {
+    uint32_t l = p->line % lines;
     bool vblank = l < vis_start || l >= vis_end;
-    if (vblank && !p->in_vblank && l >= vis_end) {
+    if (l == vis_end) {
       irq_raise(p, IRQ_VBLANK);
       timers_vblank(p, true);
+      if (g->interlace) g->field = !g->field;
     }
     p->in_vblank = vblank;
     /* The line in slices so timers, SIO /ACK and DMA land close to when
@@ -118,7 +123,7 @@ void ps1_run_frame(PS1 *p) {
       sio_tick(p);
     }
     timers_hblank(p);
-  }
-  if (g->interlace) g->field = !g->field;
+    p->line = (l + 1) % lines;
+  } while (p->line != vis_end && ++guard < lines);
   p->frame_done = true;
 }

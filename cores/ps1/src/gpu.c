@@ -68,13 +68,22 @@ static void copy_vram(Gpu *g, const uint32_t *c) {
   uint32_t sx = c[1] & 0x3FF, sy = (c[1] >> 16) & 0x1FF;
   uint32_t dx = c[2] & 0x3FF, dy = (c[2] >> 16) & 0x1FF;
   uint32_t w = ((c[3] - 1) & 0x3FF) + 1, h = (((c[3] >> 16) - 1) & 0x1FF) + 1;
-  for (uint32_t y = 0; y < h; y++)
-    for (uint32_t x = 0; x < w; x++) {
-      uint16_t v = *px(g, sx + x, sy + y);
-      uint16_t *d = px(g, dx + x, dy + y);
-      if (g->mask_check && (*d & 0x8000)) continue;
-      *d = v | (g->mask_set ? 0x8000 : 0);
+  /* Each row goes through a 16-pixel buffer: read 16, write 16. With
+   * overlapping source and destination this decides what gets copied
+   * (smaller buffers don't match ps1-tests' vram-to-vram-overlap). */
+  const uint32_t chunk = 16;
+  uint16_t buf[16];
+  for (uint32_t y = 0; y < h; y++) {
+    for (uint32_t x0 = 0; x0 < w; x0 += chunk) {
+      uint32_t n = w - x0 < chunk ? w - x0 : chunk;
+      for (uint32_t i = 0; i < n; i++) buf[i] = *px(g, sx + x0 + i, sy + y);
+      for (uint32_t i = 0; i < n; i++) {
+        uint16_t *d = px(g, dx + x0 + i, dy + y);
+        if (g->mask_check && (*d & 0x8000)) continue;
+        *d = buf[i] | (g->mask_set ? 0x8000 : 0);
+      }
     }
+  }
 }
 
 static void start_transfer(Gpu *g, const uint32_t *c, bool in) {
@@ -124,7 +133,8 @@ static void execute(PS1 *p) {
   Gpu *g = &p->gpu;
   const uint32_t *c = g->fifo;
   uint32_t op = c[0] >> 24;
-  if (op == 0x02) fill(g, c);
+  if (op == 0x01) g->clut_valid = false;   /* clear cache: drops the CLUT cache */
+  else if (op == 0x02) fill(g, c);
   else if (op == 0x1F) { g->irq = true; irq_raise(p, IRQ_GPU); }
   else if (op >= 0x20 && op < 0x40) raster_polygon(p, c);
   else if (op >= 0x40 && op < 0x60) raster_line(p, c, g->fifo_len);

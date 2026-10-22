@@ -116,6 +116,71 @@ jobs:
           echo "::notice title=N64 suites::$(head -1 /tmp/suite.md | sed 's/## //')"
           grep -o "dillon/[^ |]* | [A-Z]*" /tmp/suite.md | sed 's/^/::notice title=dillon::/' | head -40 || true
 
+  ps1:
+    name: PS1 core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build (warnings as errors)
+        working-directory: cores/ps1
+        run: make -j4
+      - name: CPU and system tests
+        working-directory: cores/ps1
+        run: make test
+
+  ps1-suites:
+    name: PS1 test programs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the core's runner
+        working-directory: cores/ps1
+        run: make -j4 tools
+      - name: Get ps1-tests (JaCzekanski, MIT)
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors -o tests.zip \
+            https://github.com/JaCzekanski/ps1-tests/releases/download/build-158/tests.zip
+          unzip -q tests.zip -d ps1-tests
+          # Reference VRAM pictures for the drawing tests live in the sources.
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/JaCzekanski/ps1-tests ps1-tests-src
+          git -C ps1-tests-src sparse-checkout set gpu mdec
+          pip install --quiet pillow
+      - name: Build OpenBIOS (pcsx-redux, MIT)
+        # A free PS1 BIOS written from scratch. If it doesn't build, the
+        # tests still run with the core's minimal built-in BIOS calls.
+        id: openbios
+        continue-on-error: true
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-mipsel-linux-gnu g++-mipsel-linux-gnu
+          git clone -q --depth 1 --recurse-submodules --shallow-submodules https://github.com/pcsx-redux/nugget nugget
+          # Debian/Ubuntu binutils call the format elf32-tradlittlemips.
+          grep -rl 'elf32-littlemips' nugget --include='*.mk' --include=Makefile | xargs sed -i 's/elf32-littlemips/elf32-tradlittlemips/g'
+          make -C nugget/openbios -j4 PREFIX=mipsel-linux-gnu
+          ls -la nugget/openbios/openbios.bin
+          cp nugget/openbios/openbios.bin openbios.bin
+      - name: Run without a BIOS (baseline)
+        run: |
+          python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests --refs ps1-tests-src \
+            --baseline cores/ps1/test/suite_baseline.txt --summary "$GITHUB_STEP_SUMMARY"
+      - name: Run with OpenBIOS
+        if: steps.openbios.outcome == 'success'
+        run: |
+          python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests --refs ps1-tests-src \
+            --bios openbios.bin --baseline cores/ps1/test/suite_baseline_openbios.txt \
+            --summary "$GITHUB_STEP_SUMMARY" --update-baseline-to openbios_baseline.txt
+      - uses: actions/upload-artifact@v6
+        if: steps.openbios.outcome == 'success'
+        with:
+          name: openbios
+          path: |
+            openbios.bin
+            openbios_baseline.txt
+
   downloads:
     name: Download ${{ matrix.emulator }}
     # Checks that every emulator's official download still resolves, so the

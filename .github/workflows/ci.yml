@@ -163,11 +163,12 @@ jobs:
         run: |
           python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests \
             --baseline cores/ps1/test/suite_baseline.txt --summary "$GITHUB_STEP_SUMMARY"
-      - name: Run with OpenBIOS (reported, not yet judged)
+      - name: Run with OpenBIOS
         if: steps.openbios.outcome == 'success'
         run: |
           python3 cores/ps1/test/suites.py --exerun cores/ps1/build/exerun --tests ps1-tests \
-            --bios openbios.bin --baseline /dev/null --summary "$GITHUB_STEP_SUMMARY" --update-baseline-to openbios_baseline.txt
+            --bios openbios.bin --baseline cores/ps1/test/suite_baseline_openbios.txt \
+            --summary "$GITHUB_STEP_SUMMARY" --update-baseline-to openbios_baseline.txt
       - uses: actions/upload-artifact@v6
         if: steps.openbios.outcome == 'success'
         with:

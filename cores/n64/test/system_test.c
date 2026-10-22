@@ -163,6 +163,33 @@ int main(int argc, char **argv) {
     CHECK("6105 challenge acknowledged", m->pif_ram[63] & 0x02, 0);
     CHECK("6105 answer first byte", m->pif_ram[0x30], 0xBF); /* worked by hand: B, then F */
   }
+  {
+    /* libultra writes the "read buttons" list once, then only reads PIF RAM
+     * each frame: every read must poll the controller again. */
+    PadState saved = m->pad[0];
+    uint8_t keep[PIF_RAM_SIZE];
+    memcpy(keep, m->pif_ram, sizeof keep);
+    static const uint8_t list[] = {0xFF, 0x01, 0x04, 0x01, 0, 0, 0, 0, 0xFE};
+    memset(m->pif_ram, 0, PIF_RAM_SIZE);
+    memcpy(m->pif_ram, list, sizeof list);
+    m->pif_ram[63] = 0x01;
+    m->pad[0].buttons = 0;
+    pif_process(m);
+    CHECK("joybus armed by write", m->joybus_armed, 1);
+    CHECK("first poll: nothing pressed", m->pif_ram[4] << 8 | m->pif_ram[5], 0);
+    m->pad[0].buttons = 0x8000; /* A */
+    m->pad[0].x = 50;
+    pif_read(m);
+    CHECK("read re-polls: A pressed", m->pif_ram[4] << 8 | m->pif_ram[5], 0x8000);
+    CHECK("read re-polls: stick x", (int8_t)m->pif_ram[6], 50);
+    CHECK("channel status ok", m->pif_ram[2], 0x04);
+    m->pad[0].buttons = 0;
+    pif_read(m);
+    CHECK("released on next read", m->pif_ram[4] << 8 | m->pif_ram[5], 0);
+    memcpy(m->pif_ram, keep, sizeof keep);
+    m->pad[0] = saved;
+    m->joybus_armed = false;
+  }
 
   for (int i = 0; i < 3; i++) retro_run();
   CHECK("frames delivered", frames_out, 3);

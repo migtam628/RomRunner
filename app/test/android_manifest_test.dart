@@ -2,11 +2,14 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-// Flutter only adds INTERNET to the debug/profile manifests. Without it in the
-// main manifest, release APKs can't load cover art or download emulators.
 void main() {
-  test('release Android manifest can use the network', () {
+  test('Android release manifest requests internet access', () {
+    // Debug/profile builds have separate manifests with INTERNET permission;
+    // the main manifest must include it so installed release APKs can connect.
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
-    expect(manifest, contains('android.permission.INTERNET'));
+    expect(
+      manifest,
+      contains(RegExp(r'<uses-permission\b[^>]*android:name="android\.permission\.INTERNET"[^>]*/>')),
+    );
   });
 }

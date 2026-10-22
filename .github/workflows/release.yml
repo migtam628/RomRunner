@@ -285,6 +285,41 @@ jobs:
     needs: [version, android, linux, windows, macos, ios, web]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # tags and history, for "What's new"
+      - name: What's new
+        # The commits since the previous release tag; the app's update
+        # dialog shows this section.
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          range=${prev:+$prev..}${GITHUB_REF_NAME}
+          {
+            echo "## What's new"
+            echo
+            git log --no-merges --format='- %s' "$range" | grep -v -E '^- (App version|Merge )' | head -40
+            echo
+            sed 's/^  //' <<'INSTALL'
+            ## Install
+
+            Already have RomRunner? **Settings → Updates → Check for updates** installs this version (Android) or downloads it (desktop, iOS).
+
+            | Platform | File | Install |
+            |---|---|---|
+            | Android phones, newer Fire TV | `-android-arm64.apk` | Sideload: `adb install -r <file>` (Fire TV: `adb connect <tv-ip>` first) |
+            | 32-bit Fire TV sticks, older phones | `-android-armv7.apk` | Same. Much smaller than the all-CPU APK. |
+            | Any Android (all CPU types) | `-android.apk` | Same, ~250 MB. |
+            | Windows | `-windows-x64.zip` | Unzip, run `RomRunner.exe`. Cores included. |
+            | macOS | `-macos.zip` | Unzip, then right-click the app → Open the first time (not notarized). Cores download on first game. |
+            | Linux | `-linux-x64.tar.gz` | Extract, run `./romrunner`. Needs GTK 3. Cores included. |
+            | iOS | `-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore. |
+            | Web | `-web.zip` | Serve the folder over HTTP(S); games need internet for EmulatorJS. |
+
+            Bring your own ROMs, disc images and BIOS files.
+            Switch games open in a Switch emulator you install separately (Eden, Citron or Ryujinx); see the README.
+          INSTALL
+          } > notes.md
+          cat notes.md
       - uses: actions/download-artifact@v7
         with:
           path: dist
@@ -300,15 +335,4 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: dist/*
-          body: |
-            | Platform | File | Install |
-            |---|---|---|
-            | Android phones, tablets, Fire TV | `-android.apk` | Sideload: `adb install -r <file>` (Fire TV: `adb connect <tv-ip>` first) |
-            | Windows | `-windows-x64.zip` | Unzip, run `RomRunner.exe`. Cores included. |
-            | macOS | `-macos.zip` | Unzip, then right-click the app → Open the first time (not notarized). Cores download on first game. |
-            | Linux | `-linux-x64.tar.gz` | Extract, run `./romrunner`. Needs GTK 3. Cores included. |
-            | iOS | `-ios-unsigned.ipa` | Sign and install with Sideloadly or AltStore. |
-            | Web | `-web.zip` | Serve the folder over HTTP(S); games need internet for EmulatorJS. |
-
-            Bring your own ROMs, disc images and BIOS files.
-            Switch games open in a Switch emulator you install separately (Eden, Citron or Ryujinx); see the README.
+          body_path: notes.md

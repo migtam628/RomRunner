@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -181,19 +182,32 @@ You are the game guide built into RomRunner, a retro game emulator. The player i
             {'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': 3},
           ],
       };
-      final res = await _client
-          .post(
-            Uri.parse(s.url),
-            headers: {
-              'content-type': 'application/json',
-              'anthropic-version': '2023-06-01',
-              if (s.apiKey.trim().isNotEmpty) 'x-api-key': s.apiKey.trim(),
-              // Lets the web build call the API from the browser.
-              'anthropic-dangerous-direct-browser-access': 'true',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 90));
+      final http.Response res;
+      try {
+        res = await _client
+            .post(
+              Uri.parse(s.url),
+              headers: {
+                'content-type': 'application/json',
+                'anthropic-version': '2023-06-01',
+                if (s.apiKey.trim().isNotEmpty) 'x-api-key': s.apiKey.trim(),
+                // Lets the web build call the API from the browser.
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(const Duration(seconds: 90));
+      } on TimeoutException {
+        throw AiHelpException('Connection to ${Uri.parse(s.url).host} timed out. Check your connection and retry.');
+      } on Exception catch (e) {
+        final detail = e.toString().toLowerCase();
+        if (detail.contains('failed host lookup') || detail.contains('no address associated with hostname')) {
+          throw AiHelpException(
+            'Could not find ${Uri.parse(s.url).host}. Check your internet connection and DNS settings, then retry.',
+          );
+        }
+        throw AiHelpException('Could not connect to ${Uri.parse(s.url).host}. Check your connection and retry.');
+      }
       final Map<String, dynamic> json;
       try {
         json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;

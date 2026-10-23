@@ -17,6 +17,7 @@ class PauseMenu extends StatefulWidget {
     required this.title,
     required this.console,
     required this.slot,
+    this.saved = const {},
     required this.fastForward,
     required this.touchVisible,
     required this.showTouchToggle,
@@ -25,6 +26,9 @@ class PauseMenu extends StatefulWidget {
   final String title;
   final Console console;
   final int slot;
+
+  /// Slots that hold a save state, with when each was saved.
+  final Map<int, DateTime> saved;
   final bool fastForward;
   final bool touchVisible;
   final bool showTouchToggle;
@@ -41,12 +45,15 @@ class _PauseMenuState extends State<PauseMenu> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    Widget item(IconData icon, String label, PauseAction action, {bool autofocus = false}) => ListTile(
+    Widget item(IconData icon, String label, PauseAction action, {bool autofocus = false, String? subtitle, bool enabled = true}) => ListTile(
           autofocus: autofocus,
+          enabled: enabled,
           leading: Icon(icon),
           title: Text(label),
+          subtitle: subtitle == null ? null : Text(subtitle),
           onTap: () => _done(action),
         );
+    final savedAt = widget.saved[_slot];
 
     return Dialog(
       insetPadding: const EdgeInsets.all(24),
@@ -83,6 +90,10 @@ class _PauseMenuState extends State<PauseMenu> {
                       Padding(
                         padding: const EdgeInsets.only(left: 6),
                         child: ChoiceChip(
+                          // A dot marks slots that hold a state.
+                          avatar: widget.saved.containsKey(s)
+                              ? Icon(Icons.circle, size: 8, color: theme.colorScheme.primary)
+                              : null,
                           label: Text('$s'),
                           selected: _slot == s,
                           onSelected: (_) => setState(() => _slot = s),
@@ -91,8 +102,11 @@ class _PauseMenuState extends State<PauseMenu> {
                   ],
                 ),
               ),
-              item(Icons.save_rounded, 'Save state', PauseAction.saveState),
-              item(Icons.restore_rounded, 'Load state', PauseAction.loadState),
+              item(Icons.save_rounded, 'Save state', PauseAction.saveState,
+                  subtitle: savedAt != null ? 'Replaces the state in slot $_slot' : null),
+              item(Icons.restore_rounded, 'Load state', PauseAction.loadState,
+                  enabled: savedAt != null,
+                  subtitle: savedAt != null ? 'Saved ${_ago(savedAt)}' : 'Slot $_slot is empty'),
               const Divider(),
               item(Icons.fast_forward_rounded, widget.fastForward ? 'Fast-forward: on' : 'Fast-forward: off',
                   PauseAction.toggleFastForward),
@@ -108,4 +122,13 @@ class _PauseMenuState extends State<PauseMenu> {
       ),
     );
   }
+}
+
+String _ago(DateTime t) {
+  final d = DateTime.now().difference(t);
+  if (d.inMinutes < 1) return 'just now';
+  if (d.inHours < 1) return '${d.inMinutes} min ago';
+  if (d.inDays < 1) return '${d.inHours} h ago';
+  if (d.inDays < 7) return '${d.inDays} days ago';
+  return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
 }

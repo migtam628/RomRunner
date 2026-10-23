@@ -216,6 +216,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     _touchMask = 0;
     _pushInput();
     _core.paused = true;
+    // Which slots hold a state, and when each was saved.
+    final paths0 = await AppPaths.get();
+    final saved = <int, DateTime>{};
+    for (var s = 1; s <= 4; s++) {
+      final f = File(paths0.statePath(widget.game.id, s));
+      if (f.existsSync()) saved[s] = f.lastModifiedSync();
+    }
+    // Open on the newest save when the current slot is empty.
+    if (!saved.containsKey(_slot) && saved.isNotEmpty) {
+      _slot = saved.entries.reduce((a, b) => a.value.isAfter(b.value) ? a : b).key;
+    }
+    if (!mounted) return;
     final result = await showDialog<PauseResult>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.6),
@@ -223,6 +235,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         title: widget.game.title,
         console: _console,
         slot: _slot,
+        saved: saved,
         fastForward: _fastForward,
         touchVisible: _touchVisible,
         showTouchToggle: _mobile,
@@ -239,8 +252,12 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           _core.saveState(statePath);
           _toast('Saved to slot $_slot');
         case PauseAction.loadState:
-          _core.loadState(statePath);
-          _toast('Loaded slot $_slot');
+          if (!File(statePath).existsSync()) {
+            _toast('Slot $_slot is empty. Save a state there first.');
+          } else {
+            _core.loadState(statePath);
+            _toast('Loaded slot $_slot');
+          }
         case PauseAction.reset:
           _core.reset();
         case PauseAction.help:
